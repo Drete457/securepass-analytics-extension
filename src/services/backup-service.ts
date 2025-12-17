@@ -2,6 +2,7 @@ import { BackupService, BackupData, BackupSettings } from '../types/backup';
 import { PasswordEntry } from '../types/password';
 import { passwordService } from './password-service';
 import { encryptionService } from './encryption-service';
+import Papa from 'papaparse';
 
 class BackupPasswordService implements BackupService {
   private readonly settingsKey = 'backup_settings';
@@ -181,34 +182,23 @@ class BackupPasswordService implements BackupService {
     try {
       const passwords = await passwordService.getAll();
       
-      // CSV header
-      const headers = ['website', 'username', 'password', 'category', 'tags', 'notes', 'created', 'updated'];
-      
-      // Escape CSV field - handles commas, quotes, and newlines
-      const escapeCSV = (field: string | undefined): string => {
-        if (!field) return '';
-        const escaped = field.replace(/"/g, '""');
-        // Wrap in quotes if contains comma, quote, or newline
-        if (escaped.includes(',') || escaped.includes('"') || escaped.includes('\n')) {
-          return `"${escaped}"`;
-        }
-        return escaped;
-      };
+      // Prepare data for papaparse
+      const data = passwords.map(p => ({
+        website: p.website,
+        username: p.username,
+        password: p.password,
+        category: p.category,
+        tags: p.tags.join(';'),
+        notes: p.notes || '',
+        created: p.createdAt.toISOString(),
+        updated: p.updatedAt.toISOString()
+      }));
 
-      // Generate CSV rows
-      const rows = passwords.map(p => [
-        escapeCSV(p.website),
-        escapeCSV(p.username),
-        escapeCSV(p.password),
-        escapeCSV(p.category),
-        escapeCSV(p.tags.join(';')),
-        escapeCSV(p.notes),
-        escapeCSV(p.createdAt.toISOString()),
-        escapeCSV(p.updatedAt.toISOString())
-      ].join(','));
-
-      // Combine header and rows
-      const csvContent = [headers.join(','), ...rows].join('\n');
+      // Use papaparse to generate CSV
+      const csvContent = Papa.unparse(data, {
+        header: true,
+        quotes: true // Always quote fields for safety
+      });
       
       // Add BOM for Excel compatibility with UTF-8
       const BOM = '\uFEFF';
@@ -233,27 +223,50 @@ class BackupPasswordService implements BackupService {
   /**
    * Import passwords from CSV file
    * Expects columns: website, username, password, category (optional), tags (optional), notes (optional)
+   * Returns detailed import results including specific error messages
    */
-  async importFromCSV(file: File): Promise<{ imported: number; skipped: number }> {
+  async importFromCSV(file: File): Promise<{ imported: number; skipped: number; errors: string[] }> {
+    const errors: string[] = [];
+    
     try {
       const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(line => line.trim());
       
-      if (lines.length < 2) {
-        throw new Error('CSV file must have a header row and at least one data row');
+      // Use papaparse for robust CSV parsing
+      const parseResult = Papa.parse<Record<string, string>>(text, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => header.toLowerCase().trim()
+      });
+
+      // Check for parsing errors
+      if (parseResult.errors.length > 0) {
+        const parseErrors = parseResult.errors.slice(0, 5).map(e => 
+          `Row ${e.row !== undefined ? e.row + 2 : '?'}: ${e.message}`
+        );
+        if (parseResult.errors.length > 5) {
+          parseErrors.push(`...and ${parseResult.errors.length - 5} more parsing errors`);
+        }
+        errors.push(...parseErrors);
       }
 
-      // Parse header
-      const header = this.parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
-      const websiteIndex = header.indexOf('website');
-      const usernameIndex = header.indexOf('username');
-      const passwordIndex = header.indexOf('password');
-      const categoryIndex = header.indexOf('category');
-      const tagsIndex = header.indexOf('tags');
-      const notesIndex = header.indexOf('notes');
+      const data = parseResult.data;
+      
+      if (data.length === 0) {
+        throw new Error('CSV file is empty or has no valid data rows');
+      }
 
-      if (websiteIndex === -1 || usernameIndex === -1 || passwordIndex === -1) {
-        throw new Error('CSV must have website, username, and password columns');
+      // Validate required columns exist
+      const firstRow = data[0];
+      const hasWebsite = 'website' in firstRow;
+      const hasUsername = 'username' in firstRow;
+      const hasPassword = 'password' in firstRow;
+
+      if (!hasWebsite || !hasUsername || !hasPassword) {
+        const missing = [];
+        if (!hasWebsite) missing.push('website');
+        if (!hasUsername) missing.push('username');
+        if (!hasPassword) missing.push('password');
+        throw new Error(`CSV is missing required columns: ${missing.join(', ')}`);
       }
 
       // Check vault lock status
@@ -268,29 +281,43 @@ class BackupPasswordService implements BackupService {
 
       let imported = 0;
       let skipped = 0;
+      const validCategories = ['work', 'personal', 'shopping', 'social', 'other'];
 
-      // Parse data rows
-      for (let i = 1; i < lines.length; i++) {
-        const values = this.parseCSVLine(lines[i]);
+      // Process each row
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        const rowNum = i + 2; // +2 because of 0-index and header row
         
-        const website = values[websiteIndex]?.trim();
-        const username = values[usernameIndex]?.trim();
-        const password = values[passwordIndex]?.trim();
+        const website = row.website?.trim();
+        const username = row.username?.trim();
+        const password = row.password?.trim();
 
-        // Skip rows with missing required fields
-        if (!website || !username || !password) {
+        // Validate required fields
+        if (!website) {
+          errors.push(`Row ${rowNum}: Missing website`);
+          skipped++;
+          continue;
+        }
+        if (!username) {
+          errors.push(`Row ${rowNum}: Missing username for ${website}`);
+          skipped++;
+          continue;
+        }
+        if (!password) {
+          errors.push(`Row ${rowNum}: Missing password for ${website}`);
           skipped++;
           continue;
         }
 
-        const category = (values[categoryIndex]?.trim() || 'personal') as PasswordEntry['category'];
-        const validCategories = ['work', 'personal', 'shopping', 'social', 'other'];
-        const finalCategory = validCategories.includes(category) ? category : 'personal';
+        const category = row.category?.trim() || 'personal';
+        const finalCategory = validCategories.includes(category) 
+          ? category as PasswordEntry['category'] 
+          : 'personal';
 
-        const tagsString = values[tagsIndex]?.trim() || '';
+        const tagsString = row.tags?.trim() || '';
         const tags = tagsString ? tagsString.split(';').map(t => t.trim()).filter(t => t) : [];
 
-        const notes = values[notesIndex]?.trim() || undefined;
+        const notes = row.notes?.trim() || undefined;
 
         try {
           await passwordService.add({
@@ -303,56 +330,17 @@ class BackupPasswordService implements BackupService {
           });
           imported++;
         } catch (error) {
-          console.error(`Failed to import row ${i + 1}:`, error);
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          errors.push(`Row ${rowNum}: Failed to import ${website} - ${errorMsg}`);
           skipped++;
         }
       }
 
-      return { imported, skipped };
+      return { imported, skipped, errors };
     } catch (error) {
       console.error('Failed to import from CSV:', error);
       throw error instanceof Error ? error : new Error('Failed to import CSV file');
     }
-  }
-
-  /**
-   * Parse a single CSV line, handling quoted fields correctly
-   */
-  private parseCSVLine(line: string): string[] {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      
-      if (inQuotes) {
-        if (char === '"') {
-          if (line[i + 1] === '"') {
-            // Escaped quote
-            current += '"';
-            i++;
-          } else {
-            // End of quoted field
-            inQuotes = false;
-          }
-        } else {
-          current += char;
-        }
-      } else {
-        if (char === '"') {
-          inQuotes = true;
-        } else if (char === ',') {
-          result.push(current);
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-    }
-    
-    result.push(current);
-    return result;
   }
 
   async importFromFile(file: File, decryptionPassword?: string): Promise<void> {

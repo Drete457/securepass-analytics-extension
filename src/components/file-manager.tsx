@@ -15,6 +15,7 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
   const [showBackupSettings, setShowBackupSettings] = useState(false);
   const [encryptionPassword, setEncryptionPassword] = useState('');
   const [showEncryptionInput, setShowEncryptionInput] = useState(false);
+  const [showCSVWarning, setShowCSVWarning] = useState(false);
 
   const handleExport = async () => {
     try {
@@ -31,7 +32,13 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
   };
 
   const handleExportCSV = async () => {
+    // Show warning dialog first
+    setShowCSVWarning(true);
+  };
+
+  const confirmCSVExport = async () => {
     try {
+      setShowCSVWarning(false);
       setIsExportingCSV(true);
       await backupPasswordService.exportToCSV();
     } catch (error) {
@@ -54,7 +61,19 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
       if (file.name.toLowerCase().endsWith('.csv')) {
         const result = await backupPasswordService.importFromCSV(file);
         onImportComplete();
-        alert(`CSV Import complete! Imported: ${result.imported}, Skipped: ${result.skipped}`);
+        
+        // Build detailed result message
+        let message = `CSV Import complete!\n\n✅ Imported: ${result.imported}\n⏭️ Skipped: ${result.skipped}`;
+        
+        if (result.errors && result.errors.length > 0) {
+          const displayErrors = result.errors.slice(0, 10);
+          message += `\n\n⚠️ Issues found:\n${displayErrors.join('\n')}`;
+          if (result.errors.length > 10) {
+            message += `\n...and ${result.errors.length - 10} more issues`;
+          }
+        }
+        
+        alert(message);
       } else {
         await backupPasswordService.importFromFile(file, encryptionPassword || undefined);
         onImportComplete();
@@ -81,6 +100,50 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
       }
     }
   };
+
+  // CSV Warning Modal
+  if (showCSVWarning) {
+    return (
+      <div className="theme-settings-container">
+        <div className="theme-settings-header">
+          <h3 className="theme-settings-title text-red-600">
+            ⚠️ Security Warning
+          </h3>
+        </div>
+        <div className="theme-settings-content">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg mb-4">
+            <p className="text-red-800 font-medium mb-2">
+              You are about to export your passwords in plain text!
+            </p>
+            <ul className="text-red-700 text-sm space-y-1 list-disc list-inside">
+              <li>All passwords will be visible to anyone with access to the file</li>
+              <li>The CSV file is NOT encrypted</li>
+              <li>This file should be deleted after use</li>
+              <li>Do not share this file or store it insecurely</li>
+            </ul>
+          </div>
+          <p className="text-sm themed-text-secondary mb-4">
+            For secure backups, use the encrypted JSON export instead.
+          </p>
+          <div className="flex space-x-3">
+            <button
+              onClick={() => setShowCSVWarning(false)}
+              className="flex-1 p-3 rounded-lg themed-bg-secondary themed-text-primary border themed-border hover:themed-bg-tertiary transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmCSVExport}
+              disabled={isExportingCSV}
+              className="flex-1 p-3 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50"
+            >
+              {isExportingCSV ? 'Exporting...' : 'I Understand, Export CSV'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (showBackupSettings) {
     return (

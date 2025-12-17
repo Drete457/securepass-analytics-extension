@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface ToastMessage {
   id: string;
@@ -54,21 +54,36 @@ export function Toast({ message, onDismiss, duration = 2000 }: ToastProps) {
   );
 }
 
-// Hook for managing toast state
-export function useToast() {
+// Hook for managing toast state with debouncing to prevent spam
+export function useToast(debounceMs: number = 500) {
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const lastToastTime = useRef<number>(0);
+  const lastToastMessage = useRef<string>('');
 
-  const showToast = (message: string, type: ToastMessage['type'] = 'success') => {
+  const showToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
+    const now = Date.now();
+    
+    // Debounce: skip if same message within debounce period
+    if (
+      message === lastToastMessage.current &&
+      now - lastToastTime.current < debounceMs
+    ) {
+      return;
+    }
+
+    lastToastTime.current = now;
+    lastToastMessage.current = message;
+
     setToast({
-      id: Date.now().toString(),
+      id: now.toString(),
       message,
       type
     });
-  };
+  }, [debounceMs]);
 
-  const dismissToast = () => {
+  const dismissToast = useCallback(() => {
     setToast(null);
-  };
+  }, []);
 
   return { toast, showToast, dismissToast };
 }

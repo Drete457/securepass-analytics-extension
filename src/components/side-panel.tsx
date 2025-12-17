@@ -382,7 +382,7 @@ export function SidePanel() {
                   ? "Setup Master Password"
                   : isVaultLocked
                     ? "Unlock Vault"
-                    : "Lock Vault"
+                    : "Lock Vault (Ctrl+L)"
               }
             >
               <span className="text-lg">
@@ -449,28 +449,36 @@ export function SidePanel() {
       )}
 
       <div className="p-4 border-b themed-bg-primary themed-border">
-        <input
-          ref={searchInputRef}
-          type="text"
-          placeholder={isVaultLocked ? "Unlock vault to search..." : "Search by website, username, tag, notes..."}
-          value={isVaultLocked ? "" : searchTerm}
-          onChange={(e) => !isVaultLocked && setSearchTerm(e.target.value)}
-          disabled={isVaultLocked}
-          className={`w-full px-3 py-2 themed-border rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent-500)] themed-bg-primary themed-text-primary ${isVaultLocked ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-        />
+        <div className="relative">
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder={isVaultLocked ? "Unlock vault to search..." : "Search by website, username, tag, notes... (Ctrl+F)"}
+            value={isVaultLocked ? "" : searchTerm}
+            onChange={(e) => !isVaultLocked && setSearchTerm(e.target.value)}
+            disabled={isVaultLocked}
+            className={`w-full px-3 py-2 pr-16 themed-border rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent-500)] themed-bg-primary themed-text-primary ${isVaultLocked ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+          />
+          {!isVaultLocked && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs themed-text-tertiary">
+              Ctrl+F
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="p-4 border-b themed-bg-primary themed-border">
         <button
           onClick={() => isModalOpen('form') ? closeModal() : handleShowNewPasswordForm()}
           disabled={isVaultLocked}
+          title={isVaultLocked ? 'Vault is locked' : 'Add new password (Ctrl+N)'}
           className={`w-full font-medium py-2 px-4 rounded-md transition-colors mb-2 ${isVaultLocked
             ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
             : 'themed-accent-bg hover:themed-accent-hover text-white'
             }`}
         >
-          {isVaultLocked ? 'Vault Locked' : isModalOpen('form') ? 'Cancel' : 'Add New Password'}
+          {isVaultLocked ? 'Vault Locked' : isModalOpen('form') ? 'Cancel (Esc)' : 'Add New Password (Ctrl+N)'}
         </button>
         
         <button
