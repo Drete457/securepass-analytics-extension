@@ -86,14 +86,11 @@ export function SidePanel() {
       if (tab?.url) {
         const url = new URL(tab.url);
         const domain = url.hostname.replace('www.', '');
-        console.log('[SidePanel] Current domain detected:', domain);
         setCurrentDomain(domain);
       } else {
-        console.log('[SidePanel] No URL available for current tab');
         setCurrentDomain('');
       }
     } catch (error) {
-      console.error('[SidePanel] Error getting current domain:', error);
       setCurrentDomain('');
     }
   };
@@ -236,7 +233,6 @@ export function SidePanel() {
 
     // Listen for tab changes
     const handleTabChange = () => {
-      console.log('[SidePanel] Tab changed, getting domain...');
       if (isComponentMounted) {
         getCurrentDomain();
       }
@@ -244,7 +240,6 @@ export function SidePanel() {
 
     // Listen for URL changes within the same tab
     const handleTabUpdate = (_: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
-      console.log('[SidePanel] Tab updated:', changeInfo);
       if (changeInfo.url && tab.active && isComponentMounted) {
         getCurrentDomain();
       }
