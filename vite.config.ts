@@ -6,7 +6,7 @@ const manifest = defineManifest({
   manifest_version: 3,
   name: "SecurePass Analytics - Smart Password Manager",
   description: "Smart password manager with encryption, breach alerts, and health monitoring.",
-  version: "0.1.0",
+  version: "0.2.0",
   permissions: [
     "sidePanel",
     "storage",

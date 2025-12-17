@@ -79,7 +79,7 @@ class ChromeStoragePasswordService implements PasswordDatabase {
   }
 
   /**
-   * Encripta dados sensíveis se o master password estiver configurado
+   * Encrypts sensitive data if master password is configured
    */
   private async encryptSensitiveData(entry: PasswordEntry): Promise<PasswordEntry> {
     // Check if master password is configured
@@ -101,7 +101,7 @@ class ChromeStoragePasswordService implements PasswordDatabase {
   }
 
   /**
-   * Decripta dados sensíveis se estiverem encriptados
+   * Decrypts sensitive data if encrypted
    */
   private async decryptSensitiveData(entry: PasswordEntry): Promise<PasswordEntry> {
     // Check if master password is configured
