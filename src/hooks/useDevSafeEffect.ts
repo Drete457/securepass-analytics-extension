@@ -33,7 +33,8 @@ export function useDevSafeEffect(
 
 /**
  * A useEffect hook specifically for one-time initialization that should
- * only run once even in development mode with StrictMode
+ * only run once even in development mode with StrictMode.
+ * Note: This effect will NOT re-run on remount - use regular useEffect if you need that.
  */
 export function useOneTimeEffect(effect: () => void | (() => void)): void {
   const hasRun = useRef(false);
@@ -46,8 +47,7 @@ export function useOneTimeEffect(effect: () => void | (() => void)): void {
 
     return () => {
       if (cleanup) cleanup();
-      // Reset for potential remount
-      hasRun.current = false;
+      // Do NOT reset hasRun - this hook is meant to run only once per session
     };
   }, []);
 }

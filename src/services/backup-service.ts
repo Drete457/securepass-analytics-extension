@@ -4,6 +4,13 @@ import { passwordService } from './password-service';
 import { encryptionService } from './encryption-service';
 import Papa from 'papaparse';
 
+/** Result of CSV import operation */
+export interface CSVImportResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
 class BackupPasswordService implements BackupService {
   private readonly settingsKey = 'backup_settings';
   private readonly backupsKey = 'auto_backups';
@@ -225,7 +232,7 @@ class BackupPasswordService implements BackupService {
    * Expects columns: website, username, password, category (optional), tags (optional), notes (optional)
    * Returns detailed import results including specific error messages
    */
-  async importFromCSV(file: File): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  async importFromCSV(file: File): Promise<CSVImportResult> {
     const errors: string[] = [];
     
     try {

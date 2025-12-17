@@ -18,6 +18,7 @@ import {
   LazyMasterPasswordChange
 } from './lazy-components';
 import { useTheme } from '../contexts/theme-context';
+import { KeyboardShortcutsHelp } from './keyboard-shortcuts-help';
 
 // Unified modal state type
 type ModalType = 
@@ -30,6 +31,7 @@ type ModalType =
   | 'masterUnlock' 
   | 'masterChange' 
   | 'codeGen' 
+  | 'help'
   | null;
 
 export function SidePanel() {
@@ -305,6 +307,10 @@ export function SidePanel() {
               setEditingPassword(null);
             }
             break;
+          case '?': // Help
+            e.preventDefault();
+            setActiveModal('help');
+            break;
         }
       }
     };
@@ -397,9 +403,22 @@ export function SidePanel() {
             >
               <span className="text-lg">{isDark ? '🌙' : '☀️'}</span>
             </button>
+            <button
+              onClick={() => setActiveModal('help')}
+              className="p-2 rounded-lg hover:bg-white hover:bg-opacity-20 transition-colors"
+              title="Keyboard Shortcuts (?)"
+            >
+              <span className="text-lg">❓</span>
+            </button>
           </div>
         </div>
       </header>
+
+      {isModalOpen('help') && (
+        <div className="p-4 themed-bg-primary border-b themed-border">
+          <KeyboardShortcutsHelp onClose={closeModal} />
+        </div>
+      )}
 
       {!isVaultLocked && isModalOpen('theme') && (
         <div className="p-4 themed-bg-primary border-b themed-border">
