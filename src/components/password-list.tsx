@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PasswordEntry } from '../types/password';
 import { PasswordBreachIndicator } from './password-breach-indicator';
 import { PasswordQRCode } from './password-qr-code';
+import { Toast, useToast } from './toast';
 
 interface PasswordListProps {
   passwords: PasswordEntry[];
@@ -13,6 +14,7 @@ interface PasswordListProps {
 export function PasswordList({ passwords, currentDomain, onEdit, onDelete }: PasswordListProps) {
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
   const [showQRPassword, setShowQRPassword] = useState<PasswordEntry | null>(null);
+  const { toast, showToast, dismissToast } = useToast();
 
   const togglePasswordVisibility = (id: string) => {
     const newVisible = new Set(visiblePasswords);
@@ -24,11 +26,13 @@ export function PasswordList({ passwords, currentDomain, onEdit, onDelete }: Pas
     setVisiblePasswords(newVisible);
   };
 
-  const copyToClipboard = async (text: string) => {
+  const copyToClipboard = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
+      showToast(`${label} copied to clipboard`, 'success');
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
+      showToast('Failed to copy to clipboard', 'error');
     }
   };
 
@@ -125,7 +129,7 @@ export function PasswordList({ passwords, currentDomain, onEdit, onDelete }: Pas
               <div className="flex items-center justify-between">
                 <span className="text-xs themed-text-secondary uppercase tracking-wide">Username</span>
                 <button
-                  onClick={() => copyToClipboard(password.username)}
+                  onClick={() => copyToClipboard(password.username, 'Username')}
                   className="themed-accent-text hover:text-[var(--accent-600)] text-sm p-1 hover:bg-[var(--accent-50)] rounded transition-colors"
                   title="Copy username"
                 >
@@ -151,7 +155,7 @@ export function PasswordList({ passwords, currentDomain, onEdit, onDelete }: Pas
                     {visiblePasswords.has(password.id) ? '🙈' : '👁️'}
                   </button>
                   <button
-                    onClick={() => copyToClipboard(password.password)}
+                    onClick={() => copyToClipboard(password.password, 'Password')}
                     className="themed-accent-text hover:text-[var(--accent-600)] text-sm p-1 hover:bg-[var(--accent-50)] rounded transition-colors"
                     title="Copy password"
                   >
@@ -192,6 +196,9 @@ export function PasswordList({ passwords, currentDomain, onEdit, onDelete }: Pas
           onClose={() => setShowQRPassword(null)}
         />
       )}
+
+      {/* Toast notifications */}
+      <Toast message={toast} onDismiss={dismissToast} />
     </div>
   );
 }

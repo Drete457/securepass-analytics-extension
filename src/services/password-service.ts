@@ -1,5 +1,15 @@
 import { PasswordEntry, PasswordDatabase } from '../types/password';
-import { securityService } from './master-password-service';
+import type { SecurityService } from './master-password-service';
+
+// Lazy import to avoid circular dependency at initialization
+let _securityService: SecurityService | null = null;
+const getSecurityService = async (): Promise<SecurityService> => {
+  if (!_securityService) {
+    const module = await import('./master-password-service');
+    _securityService = module.securityService;
+  }
+  return _securityService;
+};
 
 class ChromeStoragePasswordService implements PasswordDatabase {
   private storageKey = 'password_manager_passwords';
@@ -73,6 +83,7 @@ class ChromeStoragePasswordService implements PasswordDatabase {
    */
   private async encryptSensitiveData(entry: PasswordEntry): Promise<PasswordEntry> {
     // Check if master password is configured
+    const securityService = await getSecurityService();
     const hasMasterPassword = await securityService.hasMasterPassword();
     
     if (hasMasterPassword && !(await securityService.isLocked())) {
@@ -94,6 +105,7 @@ class ChromeStoragePasswordService implements PasswordDatabase {
    */
   private async decryptSensitiveData(entry: PasswordEntry): Promise<PasswordEntry> {
     // Check if master password is configured
+    const securityService = await getSecurityService();
     const hasMasterPassword = await securityService.hasMasterPassword();
     
     if (hasMasterPassword && !(await securityService.isLocked())) {

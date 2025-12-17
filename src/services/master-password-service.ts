@@ -45,13 +45,42 @@ class SecurityServiceImpl implements SecurityService {
   };
 
   private readonly STORAGE_KEY = 'password_manager_security';
-  private readonly SALT = 'password_manager_salt_2025';
+  private readonly USER_SALT_KEY = 'password_manager_user_salt';
+  private readonly LEGACY_SALT = 'password_manager_salt_2025'; // Keep for backwards compatibility
   private readonly DEFAULT_AUTO_LOCK_MINUTES = 15;
   private activityListenersSetup = false;
 
   constructor() {
     this.loadSecurityState();
     this.setupActivityListener();
+  }
+
+  /**
+   * Gets or creates a unique salt for this user/installation
+   * This provides better security than a static salt
+   */
+  private async getOrCreateUserSalt(): Promise<string> {
+    try {
+      const stored = await chrome.storage.local.get(this.USER_SALT_KEY);
+      
+      if (stored[this.USER_SALT_KEY]) {
+        return stored[this.USER_SALT_KEY];
+      }
+
+      // Generate a cryptographically secure random salt
+      const saltArray = new Uint8Array(32);
+      crypto.getRandomValues(saltArray);
+      const saltHex = Array.from(saltArray)
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
+
+      await chrome.storage.local.set({ [this.USER_SALT_KEY]: saltHex });
+      return saltHex;
+    } catch (error) {
+      console.error('Failed to get/create user salt, using legacy salt:', error);
+      // Fallback to legacy salt if storage fails
+      return this.LEGACY_SALT;
+    }
   }
 
   // ================= MASTER PASSWORD METHODS =================
@@ -64,16 +93,19 @@ class SecurityServiceImpl implements SecurityService {
       throw new Error('Master password must be at least 8 characters long');
     }
 
+    // Get or create dynamic salt for this user
+    const userSalt = await this.getOrCreateUserSalt();
+
     // Generate hash of master password for verification
-    const hash = CryptoJS.PBKDF2(password, this.SALT, {
+    const hash = CryptoJS.PBKDF2(password, userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
     // Generate encryption key derived from master password
-    const encryptionKey = CryptoJS.PBKDF2(password + '_encryption', this.SALT, {
+    const encryptionKey = CryptoJS.PBKDF2(password + '_encryption', userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
     this.state.masterPasswordHash = hash;
@@ -115,15 +147,18 @@ class SecurityServiceImpl implements SecurityService {
       password: this.decryptData(password.password) || password.password
     }));
 
+    // Get user salt for key derivation
+    const userSalt = await this.getOrCreateUserSalt();
+
     // Generate new hash and encryption key
-    const newHash = CryptoJS.PBKDF2(newPassword, this.SALT, {
+    const newHash = CryptoJS.PBKDF2(newPassword, userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
-    const newEncryptionKey = CryptoJS.PBKDF2(newPassword + '_encryption', this.SALT, {
+    const newEncryptionKey = CryptoJS.PBKDF2(newPassword + '_encryption', userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
     // Update the encryption key
@@ -168,9 +203,12 @@ class SecurityServiceImpl implements SecurityService {
       throw new Error('No master password set');
     }
 
-    const inputHash = CryptoJS.PBKDF2(masterPassword, this.SALT, {
+    // Get user salt for key derivation
+    const userSalt = await this.getOrCreateUserSalt();
+
+    const inputHash = CryptoJS.PBKDF2(masterPassword, userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
     if (inputHash !== this.state.masterPasswordHash) {
@@ -178,9 +216,9 @@ class SecurityServiceImpl implements SecurityService {
     }
 
     // Regenerate encryption key
-    const encryptionKey = CryptoJS.PBKDF2(masterPassword + '_encryption', this.SALT, {
+    const encryptionKey = CryptoJS.PBKDF2(masterPassword + '_encryption', userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
     this.state.encryptionKey = encryptionKey;

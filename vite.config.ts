@@ -31,6 +31,15 @@ export default defineConfig({
   plugins: [react(), crx({ manifest })],
   build: {
     chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      onwarn(warning, warn) {
+        // Suppress circular dependency warnings for our services
+        // These are intentional dynamic imports to break circular deps
+        if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+        if (warning.message?.includes('dynamic import will not move module')) return;
+        warn(warning);
+      }
+    }
   },
   server: {
     port: 5173,

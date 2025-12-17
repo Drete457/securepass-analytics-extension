@@ -46,6 +46,8 @@ export function useOneTimeEffect(effect: () => void | (() => void)): void {
 
     return () => {
       if (cleanup) cleanup();
+      // Reset for potential remount
+      hasRun.current = false;
     };
   }, []);
 }

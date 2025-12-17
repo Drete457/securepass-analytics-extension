@@ -173,6 +173,188 @@ class BackupPasswordService implements BackupService {
     }
   }
 
+  /**
+   * Export passwords to CSV format for compatibility with other password managers
+   * WARNING: CSV export is NOT encrypted - handle with care
+   */
+  async exportToCSV(): Promise<void> {
+    try {
+      const passwords = await passwordService.getAll();
+      
+      // CSV header
+      const headers = ['website', 'username', 'password', 'category', 'tags', 'notes', 'created', 'updated'];
+      
+      // Escape CSV field - handles commas, quotes, and newlines
+      const escapeCSV = (field: string | undefined): string => {
+        if (!field) return '';
+        const escaped = field.replace(/"/g, '""');
+        // Wrap in quotes if contains comma, quote, or newline
+        if (escaped.includes(',') || escaped.includes('"') || escaped.includes('\n')) {
+          return `"${escaped}"`;
+        }
+        return escaped;
+      };
+
+      // Generate CSV rows
+      const rows = passwords.map(p => [
+        escapeCSV(p.website),
+        escapeCSV(p.username),
+        escapeCSV(p.password),
+        escapeCSV(p.category),
+        escapeCSV(p.tags.join(';')),
+        escapeCSV(p.notes),
+        escapeCSV(p.createdAt.toISOString()),
+        escapeCSV(p.updatedAt.toISOString())
+      ].join(','));
+
+      // Combine header and rows
+      const csvContent = [headers.join(','), ...rows].join('\n');
+      
+      // Add BOM for Excel compatibility with UTF-8
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      
+      const filename = `passwords-export-${new Date().toISOString().split('T')[0]}.csv`;
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export to CSV:', error);
+      throw new Error('Failed to export CSV file');
+    }
+  }
+
+  /**
+   * Import passwords from CSV file
+   * Expects columns: website, username, password, category (optional), tags (optional), notes (optional)
+   */
+  async importFromCSV(file: File): Promise<{ imported: number; skipped: number }> {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      
+      if (lines.length < 2) {
+        throw new Error('CSV file must have a header row and at least one data row');
+      }
+
+      // Parse header
+      const header = this.parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+      const websiteIndex = header.indexOf('website');
+      const usernameIndex = header.indexOf('username');
+      const passwordIndex = header.indexOf('password');
+      const categoryIndex = header.indexOf('category');
+      const tagsIndex = header.indexOf('tags');
+      const notesIndex = header.indexOf('notes');
+
+      if (websiteIndex === -1 || usernameIndex === -1 || passwordIndex === -1) {
+        throw new Error('CSV must have website, username, and password columns');
+      }
+
+      // Check vault lock status
+      const { securityService } = await import('./master-password-service');
+      const hasMasterPassword = await securityService.hasMasterPassword();
+      if (hasMasterPassword) {
+        const isLocked = await securityService.isLocked();
+        if (isLocked) {
+          throw new Error('Vault is locked. Please unlock the vault before importing passwords.');
+        }
+      }
+
+      let imported = 0;
+      let skipped = 0;
+
+      // Parse data rows
+      for (let i = 1; i < lines.length; i++) {
+        const values = this.parseCSVLine(lines[i]);
+        
+        const website = values[websiteIndex]?.trim();
+        const username = values[usernameIndex]?.trim();
+        const password = values[passwordIndex]?.trim();
+
+        // Skip rows with missing required fields
+        if (!website || !username || !password) {
+          skipped++;
+          continue;
+        }
+
+        const category = (values[categoryIndex]?.trim() || 'personal') as PasswordEntry['category'];
+        const validCategories = ['work', 'personal', 'shopping', 'social', 'other'];
+        const finalCategory = validCategories.includes(category) ? category : 'personal';
+
+        const tagsString = values[tagsIndex]?.trim() || '';
+        const tags = tagsString ? tagsString.split(';').map(t => t.trim()).filter(t => t) : [];
+
+        const notes = values[notesIndex]?.trim() || undefined;
+
+        try {
+          await passwordService.add({
+            website,
+            username,
+            password,
+            category: finalCategory,
+            tags,
+            notes
+          });
+          imported++;
+        } catch (error) {
+          console.error(`Failed to import row ${i + 1}:`, error);
+          skipped++;
+        }
+      }
+
+      return { imported, skipped };
+    } catch (error) {
+      console.error('Failed to import from CSV:', error);
+      throw error instanceof Error ? error : new Error('Failed to import CSV file');
+    }
+  }
+
+  /**
+   * Parse a single CSV line, handling quoted fields correctly
+   */
+  private parseCSVLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      
+      if (inQuotes) {
+        if (char === '"') {
+          if (line[i + 1] === '"') {
+            // Escaped quote
+            current += '"';
+            i++;
+          } else {
+            // End of quoted field
+            inQuotes = false;
+          }
+        } else {
+          current += char;
+        }
+      } else {
+        if (char === '"') {
+          inQuotes = true;
+        } else if (char === ',') {
+          result.push(current);
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+    }
+    
+    result.push(current);
+    return result;
+  }
+
   async importFromFile(file: File, decryptionPassword?: string): Promise<void> {
     try {
       const text = await file.text();

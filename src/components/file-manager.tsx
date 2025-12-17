@@ -9,6 +9,7 @@ interface FileManagerProps {
 
 export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingCSV, setIsExportingCSV] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string>('');
   const [showBackupSettings, setShowBackupSettings] = useState(false);
@@ -29,6 +30,18 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
     }
   };
 
+  const handleExportCSV = async () => {
+    try {
+      setIsExportingCSV(true);
+      await backupPasswordService.exportToCSV();
+    } catch (error) {
+      console.error('CSV Export failed:', error);
+      alert('Failed to export CSV. Please try again.');
+    } finally {
+      setIsExportingCSV(false);
+    }
+  };
+
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -37,9 +50,17 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
       setIsImporting(true);
       setImportError('');
       
-      await backupPasswordService.importFromFile(file, encryptionPassword || undefined);
-      onImportComplete();
-      alert('Passwords imported successfully!');
+      // Check if it's a CSV file
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        const result = await backupPasswordService.importFromCSV(file);
+        onImportComplete();
+        alert(`CSV Import complete! Imported: ${result.imported}, Skipped: ${result.skipped}`);
+      } else {
+        await backupPasswordService.importFromFile(file, encryptionPassword || undefined);
+        onImportComplete();
+        alert('Passwords imported successfully!');
+      }
+      
       setEncryptionPassword('');
       setShowEncryptionInput(false);
       onClose();
@@ -135,10 +156,32 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
               ) : (
                 <>
                   <span>📥</span>
-                  <span>Export {showEncryptionInput ? 'Encrypted ' : ''}Backup</span>
+                  <span>Export {showEncryptionInput ? 'Encrypted ' : ''}Backup (JSON)</span>
                 </>
               )}
             </button>
+
+            <button
+              onClick={handleExportCSV}
+              disabled={isExportingCSV}
+              className="w-full flex items-center justify-center space-x-2 p-3 rounded-lg themed-bg-tertiary hover:themed-bg-secondary themed-text-primary transition-colors disabled:opacity-50 border themed-border"
+            >
+              {isExportingCSV ? (
+                <>
+                  <span className="theme-reset-spinner">⟳</span>
+                  <span>Exporting CSV...</span>
+                </>
+              ) : (
+                <>
+                  <span>📊</span>
+                  <span>Export as CSV (Unencrypted)</span>
+                </>
+              )}
+            </button>
+
+            <p className="text-xs themed-text-tertiary">
+              ⚠️ CSV export is NOT encrypted. Use JSON export for secure backups.
+            </p>
           </div>
         </div>
 
@@ -146,7 +189,7 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
         <div className="theme-settings-section">
           <h4 className="theme-settings-section-title">📤 Quick Import</h4>
           <p className="text-sm themed-text-secondary mb-3">
-            Upload a backup file to restore passwords. This will replace all current passwords.
+            Upload a backup file to restore passwords. Supports JSON and CSV formats.
           </p>
           
           {importError && (
@@ -167,7 +210,7 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
             
             <input
               type="file"
-              accept=".json"
+              accept=".json,.csv"
               onChange={handleImportFile}
               disabled={isImporting}
               className="w-full p-2 text-sm themed-border rounded-lg themed-bg-secondary themed-text-primary file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:bg-[var(--accent-500)] file:text-white file:cursor-pointer hover:file:bg-[var(--accent-600)] disabled:opacity-50"
@@ -190,8 +233,9 @@ export function FileManager({ onImportComplete, onClose }: FileManagerProps) {
               <li>• 🔄 <strong>Auto Backup:</strong> Automatic periodic backups</li>
               <li>• 🔒 <strong>Encryption:</strong> AES-256 password protection</li>
               <li>• 📋 <strong>History:</strong> Keep multiple backup versions</li>
-              <li>• 💾 <strong>Export:</strong> Create downloadable backup files</li>
-              <li>• 📤 <strong>Import:</strong> Restore from backup files</li>
+              <li>• 💾 <strong>JSON Export:</strong> Encrypted backup files</li>
+              <li>• 📊 <strong>CSV Export:</strong> Compatible with other managers</li>
+              <li>• 📤 <strong>Import:</strong> Restore from JSON or CSV files</li>
             </ul>
           </div>
         </div>
