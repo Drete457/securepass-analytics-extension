@@ -181,7 +181,10 @@ class SecurityServiceImpl implements SecurityService {
     // Re-encrypt all passwords with new key
     const reEncryptedPasswords = decryptedPasswords.map(password => ({
       ...password,
-      password: this.encryptData(password.password)
+      password: this.encryptData(password.password),
+      // Ensure dates are serialized as ISO strings
+      createdAt: password.createdAt instanceof Date ? password.createdAt.toISOString() : password.createdAt,
+      updatedAt: password.updatedAt instanceof Date ? password.updatedAt.toISOString() : password.updatedAt
     }));
 
     try {
