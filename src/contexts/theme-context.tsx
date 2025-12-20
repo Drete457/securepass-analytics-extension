@@ -25,6 +25,7 @@ const defaultTheme: ThemeSettings = {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useTheme(): ThemeContextType {
   const context = useContext(ThemeContext);
   if (!context) {

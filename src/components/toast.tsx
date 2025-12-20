@@ -55,6 +55,7 @@ export function Toast({ message, onDismiss, duration = 2000 }: ToastProps) {
 }
 
 // Hook for managing toast state with debouncing to prevent spam
+// eslint-disable-next-line react-refresh/only-export-components
 export function useToast(debounceMs: number = 500) {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const lastToastTime = useRef<number>(0);

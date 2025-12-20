@@ -154,17 +154,17 @@ export function SidePanel() {
     setActiveModal('form');
   };
 
-  const handleShowNewPasswordForm = async () => {
+  const handleShowNewPasswordForm = useCallback(async () => {
     await getCurrentDomain();
     setActiveModal('form');
-  };
+  }, []);
 
   const handleCancelEdit = () => {
     setEditingPassword(null);
     closeModal();
   };
 
-  const handleSecurityIconClick = async () => {
+  const handleSecurityIconClick = useCallback(async () => {
     const hasMP = await securityService.hasMasterPassword();
 
     if (!hasMP) {
@@ -178,7 +178,7 @@ export function SidePanel() {
       setEditingPassword(null);
       setPasswords([]);
     }
-  };
+  }, [isVaultLocked, closeModal]);
 
   const handleVaultReset = () => {
     setPasswords([]);
@@ -317,7 +317,7 @@ export function SidePanel() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeModal, isVaultLocked, hasMasterPassword, closeModal]);
+  }, [activeModal, isVaultLocked, hasMasterPassword, closeModal, handleSecurityIconClick, handleShowNewPasswordForm]);
 
   return (
     <div className="h-full themed-bg-secondary flex flex-col">

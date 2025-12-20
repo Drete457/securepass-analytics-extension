@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PasswordEntry } from '../types/password';
 import { passwordAnalysisService, PasswordHealth, PasswordAnalytics } from '../services/password-analysis-service';
 import { PasswordStrengthIndicator } from './password-strength-indicator';
@@ -26,7 +26,7 @@ export function PasswordHealthDashboard({ passwords, onPasswordEdit, onClose }: 
     daysOld: number;
   }>>([]);
 
-  const analyzePasswords = () => {
+  const analyzePasswords = useCallback(() => {
     const healthData = passwordAnalysisService.analyzePasswordHealth(passwords);
     setHealth(healthData);
 
@@ -47,7 +47,7 @@ export function PasswordHealthDashboard({ passwords, onPasswordEdit, onClose }: 
     // Find old passwords
     const old = passwordAnalysisService.findOldPasswords(passwords);
     setOldPasswords(old);
-  };
+  }, [passwords]);
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-green-600 dark:text-green-400';
@@ -67,7 +67,7 @@ export function PasswordHealthDashboard({ passwords, onPasswordEdit, onClose }: 
     if (passwords.length > 0) {
       analyzePasswords();
     }
-  }, [passwords]);
+  }, [passwords, analyzePasswords]);
 
   if (!health || !analytics) {
     return (

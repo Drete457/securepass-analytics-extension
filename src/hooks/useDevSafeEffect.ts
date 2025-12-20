@@ -28,6 +28,7 @@ export function useDevSafeEffect(
       // Reset flag when component unmounts
       hasExecuted.current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 }
 
@@ -49,5 +50,6 @@ export function useOneTimeEffect(effect: () => void | (() => void)): void {
       if (cleanup) cleanup();
       // Do NOT reset hasRun - this hook is meant to run only once per session
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }

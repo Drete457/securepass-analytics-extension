@@ -1,4 +1,4 @@
-import { useState, useEffect, FC } from 'react';
+import { useState, useEffect, useCallback, FC } from 'react';
 import QRCode from 'qrcode';
 import { PasswordEntry } from '../types/password';
 import { useTheme } from '../contexts/theme-context';
@@ -20,7 +20,7 @@ export const PasswordQRCode: FC<PasswordQRCodeProps> = ({
   const [error, setError] = useState<string>('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const generateQRCode = async () => {
+  const generateQRCode = useCallback(async () => {
     setIsGenerating(true);
     setError('');
 
@@ -46,7 +46,7 @@ export const PasswordQRCode: FC<PasswordQRCodeProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  };
+  }, [password, isDark]);
 
   const copyCredentials = async () => {
     try {
@@ -70,7 +70,7 @@ Notes: ${password.notes}` : ''}`;
       setQrCodeUrl('');
       setError('');
     }
-  }, [isOpen, password]);
+  }, [isOpen, password, generateQRCode]);
 
   if (!isOpen) return null;
 
