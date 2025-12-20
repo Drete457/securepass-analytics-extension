@@ -181,7 +181,7 @@ export function PasswordList({ passwords, currentDomain, onEdit, onDelete }: Pas
             )}
 
             {/* Footer with date */}
-            <div className="text-xs themed-text-tertiary border-t themed-border pt-2">
+            <div className="text-xs themed-text-tertiary pt-2 mt-2">
               Updated: {password.updatedAt.toLocaleDateString('en-US')}
             </div>
           </div>

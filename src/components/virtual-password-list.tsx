@@ -143,7 +143,7 @@ const PasswordItem = memo(({
               </div>
             )}
 
-            <div className="flex justify-between text-xs themed-text-secondary pt-2 border-t themed-border">
+            <div className="flex justify-between text-xs themed-text-secondary pt-2 mt-2">
               <span>Created: {new Date(password.createdAt).toLocaleDateString()}</span>
               <span>Updated: {new Date(password.updatedAt).toLocaleDateString()}</span>
             </div>
