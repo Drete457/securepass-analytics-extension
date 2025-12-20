@@ -196,7 +196,7 @@ class SecurityServiceImpl implements SecurityService {
       this.state.lastActivity = Date.now();
 
       await this.saveSecurityState();
-    } catch (error) {
+    } catch {
       // If saving fails, restore old encryption key
       this.state.encryptionKey = oldEncryptionKey;
       throw new Error('Failed to change master password. Please try again.');
@@ -620,7 +620,7 @@ class SecurityServiceImpl implements SecurityService {
       const hashBuffer = await crypto.subtle.digest(this.HASH_ALGORITHM, dataBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    } catch (error) {
+    } catch {
       // Fallback to simple hash if crypto.subtle is not available
       let hash = 0;
       const str = JSON.stringify(data);

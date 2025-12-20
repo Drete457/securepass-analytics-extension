@@ -301,7 +301,7 @@ export function MasterPasswordUnlock({ onUnlock, onClose, onReset }: MasterPassw
                         window.location.reload();
                       }
                       onClose();
-                    } catch (error) {
+                    } catch {
                       setError('Failed to reset vault. Please try again.');
                     }
                   }
@@ -372,7 +372,7 @@ export function MasterPasswordChange({ onComplete, onClose }: MasterPasswordChan
         setError('Current password is incorrect');
         return;
       }
-    } catch (error) {
+    } catch {
       setError('Current password is incorrect');
       return;
     }

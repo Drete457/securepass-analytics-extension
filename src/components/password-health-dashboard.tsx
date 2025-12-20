@@ -103,7 +103,7 @@ export function PasswordHealthDashboard({ passwords, onPasswordEdit, onClose }: 
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id as 'all' | 'weak' | 'breached' | 'duplicates' | 'old' | 'analytics')}
             className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.id
                 ? 'border-[var(--accent-500)] text-[var(--accent-500)]'

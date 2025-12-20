@@ -17,7 +17,7 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
   const [decryptionPassword, setDecryptionPassword] = useState('');
   const [autoBackups, setAutoBackups] = useState<Array<{ date: string; data: string }>>([]);
   const [showSecurityInfo, setShowSecurityInfo] = useState(false);
-  const [securityStatus, setSecurityStatus] = useState<any>(null);
+  const [securityStatus, setSecurityStatus] = useState<Record<string, unknown> | null>(null);
 
   const loadSecurityInfo = async () => {
     try {

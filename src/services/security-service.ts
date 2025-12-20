@@ -11,7 +11,7 @@ class SecurityService {
   }
 
   // Validate data integrity
-  async validateDataIntegrity(data: any): Promise<boolean> {
+  async validateDataIntegrity(data: Record<string, unknown>): Promise<boolean> {
     try {
       if (!data || typeof data !== 'object') return false;
       
@@ -36,7 +36,7 @@ class SecurityService {
   }
 
   // Check if data looks like legitimate app data (not malicious)
-  private isLegitimateAppData(data: any): boolean {
+  private isLegitimateAppData(data: Record<string, unknown>): boolean {
     // Check for common malicious patterns
     const dataStr = JSON.stringify(data);
     const suspiciousPatterns = [
@@ -52,7 +52,7 @@ class SecurityService {
   }
 
   // Secure save with integrity hash
-  async secureSave(key: string, data: any): Promise<void> {
+  async secureSave(key: string, data: Record<string, unknown>): Promise<void> {
     try {
       const dataStr = JSON.stringify(data);
       const securityHash = await this.generateSecurityHash(dataStr);
@@ -72,7 +72,7 @@ class SecurityService {
   }
 
   // Secure load with integrity validation
-  async secureLoad(key: string): Promise<any> {
+  async secureLoad(key: string): Promise<Record<string, unknown> | null> {
     try {
       const result = await chrome.storage.local.get(key);
       const data = result[key];
@@ -93,6 +93,7 @@ class SecurityService {
       }
 
       // Remove security fields before returning
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { securityHash, extensionId, timestamp, ...cleanData } = data;
       return cleanData;
     } catch (error) {

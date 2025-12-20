@@ -92,7 +92,7 @@ export function SidePanel() {
       } else {
         setCurrentDomain('');
       }
-    } catch (error) {
+    } catch {
       setCurrentDomain('');
     }
   };

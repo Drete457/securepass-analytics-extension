@@ -115,7 +115,7 @@ class BackupPasswordService implements BackupService {
       }
 
       // Convert back to PasswordEntry objects
-      const passwords: PasswordEntry[] = parsedData.passwords.map((entry: any) => ({
+      const passwords: PasswordEntry[] = parsedData.passwords.map((entry: Record<string, unknown>) => ({
         id: entry.id,
         website: entry.website,
         username: entry.username,

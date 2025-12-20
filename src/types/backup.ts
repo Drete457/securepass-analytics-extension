@@ -1,3 +1,5 @@
+import { PasswordEntry } from './password';
+
 export interface BackupService {
   exportData(): Promise<string>; // JSON encrypted
   importData(data: string): Promise<void>;
@@ -5,7 +7,7 @@ export interface BackupService {
 }
 
 export interface BackupData {
-  passwords: any[];
+  passwords: PasswordEntry[];
   exportDate: string;
   version: string;
   encrypted: boolean;

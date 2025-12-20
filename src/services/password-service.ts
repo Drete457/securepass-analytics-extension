@@ -34,7 +34,7 @@ class ChromeStoragePasswordService implements PasswordDatabase {
       const result = await chrome.storage.local.get(this.storageKey);
       const passwords = result[this.storageKey] || [];
       
-      const processed = passwords.map((entry: any) => {
+      const processed = passwords.map((entry: Record<string, unknown>) => {
         // Validate and convert dates
         let createdAt: Date;
         let updatedAt: Date;
@@ -247,7 +247,7 @@ class ChromeStoragePasswordService implements PasswordDatabase {
           if (isNaN(createdAt.getTime())) {
             createdAt = new Date();
           }
-        } catch (error) {
+        } catch {
           createdAt = new Date();
         }
 
@@ -256,7 +256,7 @@ class ChromeStoragePasswordService implements PasswordDatabase {
           if (isNaN(updatedAt.getTime())) {
             updatedAt = new Date();
           }
-        } catch (error) {
+        } catch {
           updatedAt = new Date();
         }
 

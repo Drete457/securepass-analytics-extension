@@ -40,7 +40,7 @@ class FilePasswordService implements PasswordDatabase {
         throw new Error('Invalid file format: expected array of passwords');
       }
 
-      const passwords: PasswordEntry[] = data.map((entry: any) => ({
+      const passwords: PasswordEntry[] = data.map((entry: Record<string, unknown>) => ({
         id: entry.id || this.generateId(),
         website: entry.website || '',
         username: entry.username || '',
@@ -73,7 +73,7 @@ class FilePasswordService implements PasswordDatabase {
       const result = await chrome.storage.local.get(this.storageKey);
       const passwords = result[this.storageKey] || [];
       
-      return passwords.map((entry: any) => ({
+      return passwords.map((entry: Record<string, unknown>) => ({
         ...entry,
         createdAt: new Date(entry.createdAt),
         updatedAt: new Date(entry.updatedAt)

@@ -53,7 +53,7 @@ class PasswordAnalysisService {
     const hasLowercase = /[a-z]/.test(password);
     const hasUppercase = /[A-Z]/.test(password);
     const hasNumbers = /\d/.test(password);
-    const hasSymbols = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+    const hasSymbols = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password);
 
     if (hasLowercase && hasUppercase) {
       score += 1;
@@ -126,7 +126,7 @@ class PasswordAnalysisService {
     });
 
     return Array.from(passwordMap.entries())
-      .filter(([_, data]) => data.websites.length > 1)
+      .filter(([, data]) => data.websites.length > 1)
       .map(([password, data]) => ({
         password,
         count: data.websites.length,
@@ -150,7 +150,7 @@ class PasswordAnalysisService {
             validUpdatedAt = updatedAt;
           } else {
             // Try to parse as string if it's not a valid Date object
-            validUpdatedAt = new Date(updatedAt as any);
+            validUpdatedAt = new Date(updatedAt as string | number);
             if (isNaN(validUpdatedAt.getTime())) {
               console.warn('PasswordAnalysisService: Invalid updatedAt date for password, using current date:', updatedAt);
               validUpdatedAt = new Date(); // Fallback to current date
@@ -306,7 +306,7 @@ class PasswordAnalysisService {
           createdAt = password.createdAt;
         } else {
           // Try to parse as string if it's not a valid Date object
-          createdAt = new Date(password.createdAt as any);
+          createdAt = new Date(password.createdAt as string | number);
           if (isNaN(createdAt.getTime())) {
             console.warn('PasswordAnalysisService: Invalid date for password, using current date:', password.createdAt);
             createdAt = new Date(); // Fallback to current date
