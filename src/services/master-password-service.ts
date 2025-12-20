@@ -45,13 +45,55 @@ class SecurityServiceImpl implements SecurityService {
   };
 
   private readonly STORAGE_KEY = 'password_manager_security';
-  private readonly SALT = 'password_manager_salt_2025';
+  private readonly USER_SALT_KEY = 'password_manager_user_salt';
+  private readonly LEGACY_SALT = 'password_manager_salt_2025'; // Keep for backwards compatibility
   private readonly DEFAULT_AUTO_LOCK_MINUTES = 15;
   private activityListenersSetup = false;
 
   constructor() {
     this.loadSecurityState();
     this.setupActivityListener();
+  }
+
+  /**
+   * Gets or creates a unique salt for this user/installation
+   * This provides better security than a static salt
+   * For existing users (those who already have a master password hash stored),
+   * we continue using the legacy salt to maintain backwards compatibility.
+   * Only new users get the dynamic salt.
+   */
+  private async getOrCreateUserSalt(): Promise<string> {
+    try {
+      // First, check if user already has a stored salt
+      const stored = await chrome.storage.local.get(this.USER_SALT_KEY);
+      
+      if (stored[this.USER_SALT_KEY]) {
+        return stored[this.USER_SALT_KEY];
+      }
+
+      // Check if this is an existing user (has master password hash but no user salt)
+      // This means they were using the legacy salt - continue using it for compatibility
+      const securityState = await chrome.storage.local.get(this.STORAGE_KEY);
+      if (securityState[this.STORAGE_KEY]?.masterPasswordHash) {
+        // Existing user - store legacy salt as their user salt for consistency
+        await chrome.storage.local.set({ [this.USER_SALT_KEY]: this.LEGACY_SALT });
+        return this.LEGACY_SALT;
+      }
+
+      // New user - generate a cryptographically secure random salt
+      const saltArray = new Uint8Array(32);
+      crypto.getRandomValues(saltArray);
+      const saltHex = Array.from(saltArray)
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
+
+      await chrome.storage.local.set({ [this.USER_SALT_KEY]: saltHex });
+      return saltHex;
+    } catch (error) {
+      console.error('Failed to get/create user salt, using legacy salt:', error);
+      // Fallback to legacy salt if storage fails
+      return this.LEGACY_SALT;
+    }
   }
 
   // ================= MASTER PASSWORD METHODS =================
@@ -64,16 +106,19 @@ class SecurityServiceImpl implements SecurityService {
       throw new Error('Master password must be at least 8 characters long');
     }
 
+    // Get or create dynamic salt for this user
+    const userSalt = await this.getOrCreateUserSalt();
+
     // Generate hash of master password for verification
-    const hash = CryptoJS.PBKDF2(password, this.SALT, {
+    const hash = CryptoJS.PBKDF2(password, userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
     // Generate encryption key derived from master password
-    const encryptionKey = CryptoJS.PBKDF2(password + '_encryption', this.SALT, {
+    const encryptionKey = CryptoJS.PBKDF2(password + '_encryption', userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
     this.state.masterPasswordHash = hash;
@@ -115,15 +160,18 @@ class SecurityServiceImpl implements SecurityService {
       password: this.decryptData(password.password) || password.password
     }));
 
+    // Get user salt for key derivation
+    const userSalt = await this.getOrCreateUserSalt();
+
     // Generate new hash and encryption key
-    const newHash = CryptoJS.PBKDF2(newPassword, this.SALT, {
+    const newHash = CryptoJS.PBKDF2(newPassword, userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
-    const newEncryptionKey = CryptoJS.PBKDF2(newPassword + '_encryption', this.SALT, {
+    const newEncryptionKey = CryptoJS.PBKDF2(newPassword + '_encryption', userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
     // Update the encryption key
@@ -133,7 +181,10 @@ class SecurityServiceImpl implements SecurityService {
     // Re-encrypt all passwords with new key
     const reEncryptedPasswords = decryptedPasswords.map(password => ({
       ...password,
-      password: this.encryptData(password.password)
+      password: this.encryptData(password.password),
+      // Ensure dates are serialized as ISO strings
+      createdAt: password.createdAt instanceof Date ? password.createdAt.toISOString() : password.createdAt,
+      updatedAt: password.updatedAt instanceof Date ? password.updatedAt.toISOString() : password.updatedAt
     }));
 
     try {
@@ -162,33 +213,92 @@ class SecurityServiceImpl implements SecurityService {
 
   /**
    * Attempts to unlock the vault with the master password
+   * Includes migration logic for users with old iteration count (10000 -> 100000)
    */
   async unlockVault(masterPassword: string): Promise<boolean> {
     if (!this.state.masterPasswordHash) {
       throw new Error('No master password set');
     }
 
-    const inputHash = CryptoJS.PBKDF2(masterPassword, this.SALT, {
+    // Get user salt for key derivation
+    const userSalt = await this.getOrCreateUserSalt();
+
+    // Try with new iteration count first (100000)
+    const inputHash = CryptoJS.PBKDF2(masterPassword, userSalt, {
       keySize: 256 / 32,
-      iterations: 10000
+      iterations: 100000
     }).toString();
 
-    if (inputHash !== this.state.masterPasswordHash) {
-      return false;
+    if (inputHash === this.state.masterPasswordHash) {
+      // Success with new iterations
+      const encryptionKey = CryptoJS.PBKDF2(masterPassword + '_encryption', userSalt, {
+        keySize: 256 / 32,
+        iterations: 100000
+      }).toString();
+
+      this.state.encryptionKey = encryptionKey;
+      this.state.isLocked = false;
+      this.state.lastActivity = Date.now();
+
+      this.setAutoLockTimer(this.DEFAULT_AUTO_LOCK_MINUTES);
+      return true;
     }
 
-    // Regenerate encryption key
-    const encryptionKey = CryptoJS.PBKDF2(masterPassword + '_encryption', this.SALT, {
+    // Try with legacy iteration count (10000) for migration
+    const legacyHash = CryptoJS.PBKDF2(masterPassword, userSalt, {
       keySize: 256 / 32,
       iterations: 10000
     }).toString();
 
-    this.state.encryptionKey = encryptionKey;
-    this.state.isLocked = false;
-    this.state.lastActivity = Date.now();
+    if (legacyHash === this.state.masterPasswordHash) {
+      console.log('Migrating user to new iteration count...');
+      
+      // Generate legacy encryption key to decrypt existing data
+      const legacyEncryptionKey = CryptoJS.PBKDF2(masterPassword + '_encryption', userSalt, {
+        keySize: 256 / 32,
+        iterations: 10000
+      }).toString();
 
-    this.setAutoLockTimer(this.DEFAULT_AUTO_LOCK_MINUTES);
-    return true;
+      // Temporarily set legacy key to decrypt existing passwords
+      this.state.encryptionKey = legacyEncryptionKey;
+
+      // Get all passwords decrypted with legacy key
+      const passwordService = (await import('./password-service')).passwordService;
+      const allPasswords = await passwordService.getAll();
+
+      // Generate new hash and encryption key with 100000 iterations
+      const newHash = CryptoJS.PBKDF2(masterPassword, userSalt, {
+        keySize: 256 / 32,
+        iterations: 100000
+      }).toString();
+
+      const newEncryptionKey = CryptoJS.PBKDF2(masterPassword + '_encryption', userSalt, {
+        keySize: 256 / 32,
+        iterations: 100000
+      }).toString();
+
+      // Update to new encryption key
+      this.state.encryptionKey = newEncryptionKey;
+      this.state.masterPasswordHash = newHash;
+      this.state.isLocked = false;
+      this.state.lastActivity = Date.now();
+
+      // Re-encrypt all passwords with new key
+      for (const password of allPasswords) {
+        await passwordService.update(password.id, {
+          password: password.password,
+          username: password.username
+        });
+      }
+
+      await this.saveSecurityState();
+      console.log('Migration complete: upgraded to 100000 iterations');
+
+      this.setAutoLockTimer(this.DEFAULT_AUTO_LOCK_MINUTES);
+      return true;
+    }
+
+    return false;
   }
 
   /**

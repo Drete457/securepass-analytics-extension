@@ -1,12 +1,28 @@
 import { PasswordEntry, PasswordDatabase } from '../types/password';
-import { securityService } from './master-password-service';
+import type { SecurityService } from './master-password-service';
+
+// Lazy import to avoid circular dependency at initialization
+let _securityService: SecurityService | null = null;
+const getSecurityService = async (): Promise<SecurityService> => {
+  if (!_securityService) {
+    const module = await import('./master-password-service');
+    _securityService = module.securityService;
+  }
+  return _securityService;
+};
 
 class ChromeStoragePasswordService implements PasswordDatabase {
   private storageKey = 'password_manager_passwords';
 
   private async saveToStorage(passwords: PasswordEntry[]): Promise<void> {
     try {
-      await chrome.storage.local.set({ [this.storageKey]: passwords });
+      // Serialize dates to ISO strings before saving
+      const serialized = passwords.map(entry => ({
+        ...entry,
+        createdAt: entry.createdAt instanceof Date ? entry.createdAt.toISOString() : entry.createdAt,
+        updatedAt: entry.updatedAt instanceof Date ? entry.updatedAt.toISOString() : entry.updatedAt
+      }));
+      await chrome.storage.local.set({ [this.storageKey]: serialized });
     } catch (error) {
       console.error('Failed to save to chrome storage:', error);
       throw new Error('Failed to save passwords');
@@ -24,9 +40,20 @@ class ChromeStoragePasswordService implements PasswordDatabase {
         let updatedAt: Date;
 
         try {
-          createdAt = entry.createdAt ? new Date(entry.createdAt) : new Date();
-          if (isNaN(createdAt.getTime())) {
-            console.warn('PasswordService: Invalid createdAt date, using current date:', entry.createdAt);
+          // Handle both ISO string and Date object formats
+          if (entry.createdAt) {
+            const dateValue = typeof entry.createdAt === 'string' 
+              ? entry.createdAt 
+              : (entry.createdAt instanceof Date 
+                  ? entry.createdAt.toISOString() 
+                  : new Date().toISOString());
+            createdAt = new Date(dateValue);
+            
+            if (isNaN(createdAt.getTime())) {
+              console.warn('PasswordService: Invalid createdAt date, using current date:', entry.createdAt);
+              createdAt = new Date();
+            }
+          } else {
             createdAt = new Date();
           }
         } catch (error) {
@@ -35,9 +62,20 @@ class ChromeStoragePasswordService implements PasswordDatabase {
         }
 
         try {
-          updatedAt = entry.updatedAt ? new Date(entry.updatedAt) : new Date();
-          if (isNaN(updatedAt.getTime())) {
-            console.warn('PasswordService: Invalid updatedAt date, using current date:', entry.updatedAt);
+          // Handle both ISO string and Date object formats
+          if (entry.updatedAt) {
+            const dateValue = typeof entry.updatedAt === 'string'
+              ? entry.updatedAt
+              : (entry.updatedAt instanceof Date
+                  ? entry.updatedAt.toISOString()
+                  : new Date().toISOString());
+            updatedAt = new Date(dateValue);
+            
+            if (isNaN(updatedAt.getTime())) {
+              console.warn('PasswordService: Invalid updatedAt date, using current date:', entry.updatedAt);
+              updatedAt = new Date();
+            }
+          } else {
             updatedAt = new Date();
           }
         } catch (error) {
@@ -69,10 +107,11 @@ class ChromeStoragePasswordService implements PasswordDatabase {
   }
 
   /**
-   * Encripta dados sensíveis se o master password estiver configurado
+   * Encrypts sensitive data if master password is configured
    */
   private async encryptSensitiveData(entry: PasswordEntry): Promise<PasswordEntry> {
     // Check if master password is configured
+    const securityService = await getSecurityService();
     const hasMasterPassword = await securityService.hasMasterPassword();
     
     if (hasMasterPassword && !(await securityService.isLocked())) {
@@ -90,10 +129,11 @@ class ChromeStoragePasswordService implements PasswordDatabase {
   }
 
   /**
-   * Decripta dados sensíveis se estiverem encriptados
+   * Decrypts sensitive data if encrypted
    */
   private async decryptSensitiveData(entry: PasswordEntry): Promise<PasswordEntry> {
     // Check if master password is configured
+    const securityService = await getSecurityService();
     const hasMasterPassword = await securityService.hasMasterPassword();
     
     if (hasMasterPassword && !(await securityService.isLocked())) {

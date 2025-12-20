@@ -8,3 +8,6 @@ export { BackupSettings } from './backup-settings';
 export { PasswordQRCode } from './password-qr-code';
 export { RandomCodeGenerator } from './random-code-generator';
 export { LoadingSpinner, SuspenseWrapper } from './loading-spinner';
+export { Toast, useToast } from './toast';
+export type { ToastMessage } from './toast';
+export { KeyboardShortcutsHelp } from './keyboard-shortcuts-help';

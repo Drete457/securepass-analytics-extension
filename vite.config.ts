@@ -5,8 +5,8 @@ import { crx, defineManifest } from '@crxjs/vite-plugin';
 const manifest = defineManifest({
   manifest_version: 3,
   name: "SecurePass Analytics - Smart Password Manager",
-  description: "Smart password manager with security analytics, breach detection, strength scoring, QR sharing, and comprehensive password health dashboard.",
-  version: "0.1.0",
+  description: "Smart password manager with encryption, breach alerts, and health monitoring.",
+  version: "0.2.0",
   permissions: [
     "sidePanel",
     "storage",
@@ -31,6 +31,15 @@ export default defineConfig({
   plugins: [react(), crx({ manifest })],
   build: {
     chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      onwarn(warning, warn) {
+        // Suppress circular dependency warnings for our services
+        // These are intentional dynamic imports to break circular deps
+        if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+        if (warning.message?.includes('dynamic import will not move module')) return;
+        warn(warning);
+      }
+    }
   },
   server: {
     port: 5173,

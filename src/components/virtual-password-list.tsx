@@ -3,6 +3,7 @@ import { PasswordEntry } from '../types/password';
 import { PasswordBreachIndicator } from './password-breach-indicator';
 import { PasswordQRCode } from './password-qr-code';
 import { useVirtualScroll } from '../hooks/useVirtualScroll';
+import { Toast, useToast } from './toast';
 
 interface VirtualPasswordListProps {
   passwords: PasswordEntry[];
@@ -21,6 +22,7 @@ interface PasswordItemProps {
   visiblePasswords: Set<string>;
   onToggleVisibility: (id: string) => void;
   onShowQR: (password: PasswordEntry) => void;
+  onCopy: (text: string, label: string) => void;
 }
 
 // Memoized password item component to avoid unnecessary re-renders
@@ -32,18 +34,11 @@ const PasswordItem = memo(({
   style, 
   visiblePasswords,
   onToggleVisibility,
-  onShowQR 
+  onShowQR,
+  onCopy
 }: PasswordItemProps) => {
   const isCurrentDomain = currentDomain && 
     password.website.toLowerCase().includes(currentDomain.toLowerCase());
-
-  const copyToClipboard = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-    }
-  }, []);
 
   return (
     <div 
@@ -118,7 +113,7 @@ const PasswordItem = memo(({
                   {visiblePasswords.has(password.id) ? '🙈' : '👁️'}
                 </button>
                 <button
-                  onClick={() => copyToClipboard(password.password)}
+                  onClick={() => onCopy(password.password, 'Password')}
                   className="p-1 themed-text-secondary hover:themed-text-primary rounded transition-colors"
                   title="Copy Password"
                 >
@@ -148,7 +143,7 @@ const PasswordItem = memo(({
               </div>
             )}
 
-            <div className="flex justify-between text-xs themed-text-secondary pt-2 border-t themed-border">
+            <div className="flex justify-between text-xs themed-text-secondary pt-2 mt-2">
               <span>Created: {new Date(password.createdAt).toLocaleDateString()}</span>
               <span>Updated: {new Date(password.updatedAt).toLocaleDateString()}</span>
             </div>
@@ -170,6 +165,7 @@ export function VirtualPasswordList({
 }: VirtualPasswordListProps) {
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
   const [showQRPassword, setShowQRPassword] = useState<PasswordEntry | null>(null);
+  const { toast, showToast, dismissToast } = useToast();
 
   // Estimated height of each item (adjust as needed)
   const ITEM_HEIGHT = 200;
@@ -199,6 +195,16 @@ export function VirtualPasswordList({
     setShowQRPassword(password);
   }, []);
 
+  const handleCopy = useCallback(async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(`${label} copied to clipboard`, 'success');
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      showToast('Failed to copy to clipboard', 'error');
+    }
+  }, [showToast]);
+
   if (passwords.length === 0) {
     return (
       <div className="p-8 text-center themed-text-secondary">
@@ -226,6 +232,7 @@ export function VirtualPasswordList({
               visiblePasswords={visiblePasswords}
               onToggleVisibility={togglePasswordVisibility}
               onShowQR={handleShowQR}
+              onCopy={handleCopy}
             />
           ))}
         </div>
@@ -238,6 +245,9 @@ export function VirtualPasswordList({
           onClose={() => setShowQRPassword(null)}
         />
       )}
+
+      {/* Toast notifications */}
+      <Toast message={toast} onDismiss={dismissToast} />
     </>
   );
 }

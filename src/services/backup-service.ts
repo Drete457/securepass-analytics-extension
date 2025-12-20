@@ -2,6 +2,14 @@ import { BackupService, BackupData, BackupSettings } from '../types/backup';
 import { PasswordEntry } from '../types/password';
 import { passwordService } from './password-service';
 import { encryptionService } from './encryption-service';
+import Papa from 'papaparse';
+
+/** Result of CSV import operation */
+export interface CSVImportResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
 
 class BackupPasswordService implements BackupService {
   private readonly settingsKey = 'backup_settings';
@@ -170,6 +178,175 @@ class BackupPasswordService implements BackupService {
     } catch (error) {
       console.error('Failed to export to file:', error);
       throw new Error('Failed to export backup file');
+    }
+  }
+
+  /**
+   * Export passwords to CSV format for compatibility with other password managers
+   * WARNING: CSV export is NOT encrypted - handle with care
+   */
+  async exportToCSV(): Promise<void> {
+    try {
+      const passwords = await passwordService.getAll();
+      
+      // Prepare data for papaparse
+      const data = passwords.map(p => ({
+        website: p.website,
+        username: p.username,
+        password: p.password,
+        category: p.category,
+        tags: p.tags.join(';'),
+        notes: p.notes || '',
+        created: p.createdAt.toISOString(),
+        updated: p.updatedAt.toISOString()
+      }));
+
+      // Use papaparse to generate CSV
+      const csvContent = Papa.unparse(data, {
+        header: true,
+        quotes: true // Always quote fields for safety
+      });
+      
+      // Add BOM for Excel compatibility with UTF-8
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      
+      const filename = `passwords-export-${new Date().toISOString().split('T')[0]}.csv`;
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export to CSV:', error);
+      throw new Error('Failed to export CSV file');
+    }
+  }
+
+  /**
+   * Import passwords from CSV file
+   * Expects columns: website, username, password, category (optional), tags (optional), notes (optional)
+   * Returns detailed import results including specific error messages
+   */
+  async importFromCSV(file: File): Promise<CSVImportResult> {
+    const errors: string[] = [];
+    
+    try {
+      const text = await file.text();
+      
+      // Use papaparse for robust CSV parsing
+      const parseResult = Papa.parse<Record<string, string>>(text, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => header.toLowerCase().trim()
+      });
+
+      // Check for parsing errors
+      if (parseResult.errors.length > 0) {
+        const parseErrors = parseResult.errors.slice(0, 5).map(e => 
+          `Row ${e.row !== undefined ? e.row + 2 : '?'}: ${e.message}`
+        );
+        if (parseResult.errors.length > 5) {
+          parseErrors.push(`...and ${parseResult.errors.length - 5} more parsing errors`);
+        }
+        errors.push(...parseErrors);
+      }
+
+      const data = parseResult.data;
+      
+      if (data.length === 0) {
+        throw new Error('CSV file is empty or has no valid data rows');
+      }
+
+      // Validate required columns exist
+      const firstRow = data[0];
+      const hasWebsite = 'website' in firstRow;
+      const hasUsername = 'username' in firstRow;
+      const hasPassword = 'password' in firstRow;
+
+      if (!hasWebsite || !hasUsername || !hasPassword) {
+        const missing = [];
+        if (!hasWebsite) missing.push('website');
+        if (!hasUsername) missing.push('username');
+        if (!hasPassword) missing.push('password');
+        throw new Error(`CSV is missing required columns: ${missing.join(', ')}`);
+      }
+
+      // Check vault lock status
+      const { securityService } = await import('./master-password-service');
+      const hasMasterPassword = await securityService.hasMasterPassword();
+      if (hasMasterPassword) {
+        const isLocked = await securityService.isLocked();
+        if (isLocked) {
+          throw new Error('Vault is locked. Please unlock the vault before importing passwords.');
+        }
+      }
+
+      let imported = 0;
+      let skipped = 0;
+      const validCategories = ['work', 'personal', 'shopping', 'social', 'other'];
+
+      // Process each row
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        const rowNum = i + 2; // +2 because of 0-index and header row
+        
+        const website = row.website?.trim();
+        const username = row.username?.trim();
+        const password = row.password?.trim();
+
+        // Validate required fields
+        if (!website) {
+          errors.push(`Row ${rowNum}: Missing website`);
+          skipped++;
+          continue;
+        }
+        if (!username) {
+          errors.push(`Row ${rowNum}: Missing username for ${website}`);
+          skipped++;
+          continue;
+        }
+        if (!password) {
+          errors.push(`Row ${rowNum}: Missing password for ${website}`);
+          skipped++;
+          continue;
+        }
+
+        const category = row.category?.trim() || 'personal';
+        const finalCategory = validCategories.includes(category) 
+          ? category as PasswordEntry['category'] 
+          : 'personal';
+
+        const tagsString = row.tags?.trim() || '';
+        const tags = tagsString ? tagsString.split(';').map(t => t.trim()).filter(t => t) : [];
+
+        const notes = row.notes?.trim() || undefined;
+
+        try {
+          await passwordService.add({
+            website,
+            username,
+            password,
+            category: finalCategory,
+            tags,
+            notes
+          });
+          imported++;
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          errors.push(`Row ${rowNum}: Failed to import ${website} - ${errorMsg}`);
+          skipped++;
+        }
+      }
+
+      return { imported, skipped, errors };
+    } catch (error) {
+      console.error('Failed to import from CSV:', error);
+      throw error instanceof Error ? error : new Error('Failed to import CSV file');
     }
   }
 

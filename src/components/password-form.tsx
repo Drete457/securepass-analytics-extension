@@ -22,10 +22,9 @@ export function PasswordForm({ password, currentDomain, onSave, onCancel }: Pass
 
   const generatePassword = () => {
     const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-    let result = '';
-    for (let i = 0; i < 16; i++) {
-      result += charset.charAt(Math.floor(Math.random() * charset.length));
-    }
+    const randomValues = new Uint32Array(16);
+    crypto.getRandomValues(randomValues);
+    const result = Array.from(randomValues, (value) => charset[value % charset.length]).join('');
     setPasswordValue(result);
   };
 

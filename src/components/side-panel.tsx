@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { PasswordEntry } from '../types/password';
 import { passwordService } from '../services/password-service';
 import { securityService } from '../services/master-password-service';
@@ -18,27 +18,45 @@ import {
   LazyMasterPasswordChange
 } from './lazy-components';
 import { useTheme } from '../contexts/theme-context';
+import { KeyboardShortcutsHelp } from './keyboard-shortcuts-help';
+
+// Unified modal state type
+type ModalType = 
+  | 'form' 
+  | 'theme' 
+  | 'files' 
+  | 'health' 
+  | 'breach' 
+  | 'masterSetup' 
+  | 'masterUnlock' 
+  | 'masterChange' 
+  | 'codeGen' 
+  | 'help'
+  | null;
 
 export function SidePanel() {
   const { isDark } = useTheme();
   const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [showForm, setShowForm] = useState<boolean>(false);
-  const [showThemeSettings, setShowThemeSettings] = useState<boolean>(false);
-  const [showFileManager, setShowFileManager] = useState<boolean>(false);
-  const [showHealthDashboard, setShowHealthDashboard] = useState<boolean>(false);
-  const [showBreachCheck, setShowBreachCheck] = useState<boolean>(false);
+  const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [editingPassword, setEditingPassword] = useState<PasswordEntry | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const debouncedSearchTerm = useDebounce(searchTerm, 300); // Debounce por 300ms
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [currentDomain, setCurrentDomain] = useState<string>('');
-  const [showMasterPasswordSetup, setShowMasterPasswordSetup] = useState<boolean>(false);
-  const [showMasterPasswordUnlock, setShowMasterPasswordUnlock] = useState<boolean>(false);
-  const [showMasterPasswordChange, setShowMasterPasswordChange] = useState<boolean>(false);
-  const [showRandomCodeGenerator, setShowRandomCodeGenerator] = useState<boolean>(false);
   const [isVaultLocked, setIsVaultLocked] = useState<boolean>(false);
   const [hasMasterPassword, setHasMasterPassword] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Helper to check if a modal is active
+  const isModalOpen = useCallback((modal: ModalType) => activeModal === modal, [activeModal]);
+  
+  // Helper to toggle modals
+  const toggleModal = useCallback((modal: ModalType) => {
+    setActiveModal(prev => prev === modal ? null : modal);
+  }, []);
+
+  const closeModal = useCallback(() => setActiveModal(null), []);
 
   const initializeSecurity = async () => {
     try {
@@ -51,7 +69,7 @@ export function SidePanel() {
 
         // Only show unlock if has master password AND is locked AND it's the first initialization
         if (isLocked && !isInitialized) {
-          setShowMasterPasswordUnlock(true);
+          setActiveModal('masterUnlock');
         }
       } else {
         // No master password, vault is not locked
@@ -59,7 +77,6 @@ export function SidePanel() {
       }
 
       setIsInitialized(true);
-      // Removed: don't show setup automatically
     } catch (error) {
       console.error('Error initializing security:', error);
     }
@@ -68,13 +85,15 @@ export function SidePanel() {
   const getCurrentDomain = async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab.url) {
+      if (tab?.url) {
         const url = new URL(tab.url);
         const domain = url.hostname.replace('www.', '');
         setCurrentDomain(domain);
+      } else {
+        setCurrentDomain('');
       }
     } catch (error) {
-      console.error('Error getting current domain:', error);
+      setCurrentDomain('');
     }
   };
 
@@ -102,7 +121,7 @@ export function SidePanel() {
     try {
       await passwordService.add(passwordData);
       await loadPasswords();
-      setShowForm(false);
+      closeModal();
     } catch (error) {
       console.error('Error adding password:', error);
     }
@@ -113,7 +132,7 @@ export function SidePanel() {
       await passwordService.update(id, passwordData);
       await loadPasswords();
       setEditingPassword(null);
-      setShowForm(false);
+      closeModal();
     } catch (error) {
       console.error('Error updating password:', error);
     }
@@ -132,83 +151,70 @@ export function SidePanel() {
 
   const handleEditPassword = (password: PasswordEntry) => {
     setEditingPassword(password);
-    setShowForm(true);
+    setActiveModal('form');
   };
 
   const handleShowNewPasswordForm = async () => {
-    await getCurrentDomain(); // Refresh domain before showing form
-    setShowForm(true);
+    await getCurrentDomain();
+    setActiveModal('form');
   };
 
   const handleCancelEdit = () => {
     setEditingPassword(null);
-    setShowForm(false);
+    closeModal();
   };
 
   const handleSecurityIconClick = async () => {
     const hasMP = await securityService.hasMasterPassword();
 
     if (!hasMP) {
-      // No master password configured, show setup
-      setShowMasterPasswordSetup(true);
+      setActiveModal('masterSetup');
     } else if (isVaultLocked && await securityService.isLocked()) {
-      // Has master password but is locked, show unlock
-      setShowMasterPasswordUnlock(true);
+      setActiveModal('masterUnlock');
     } else {
-      // Is unlocked, lock (without showing modal)
       securityService.lockVault();
       setIsVaultLocked(true);
-
-      // Clear any open forms and data when locking
-      setShowForm(false);
+      closeModal();
       setEditingPassword(null);
       setPasswords([]);
     }
   };
 
   const handleVaultReset = () => {
-    // Reset all states to initial values
     setPasswords([]);
     setHasMasterPassword(false);
     setIsVaultLocked(false);
-    setShowMasterPasswordSetup(false);
-    setShowMasterPasswordUnlock(false);
-    setShowMasterPasswordChange(false);
-    setShowForm(false);
+    setActiveModal(null);
     setEditingPassword(null);
     setSearchTerm('');
     setIsInitialized(false);
-
-    // Reinitialize the security system
     initializeSecurity();
   };
 
-  const filteredPasswords = passwords.filter(password => {
+  // Memoized filtered passwords
+  const filteredPasswords = useMemo(() => {
     const searchLower = debouncedSearchTerm.toLowerCase();
-    return (
+    return passwords.filter(password => 
       password.website.toLowerCase().includes(searchLower) ||
       password.username.toLowerCase().includes(searchLower) ||
       password.category.toLowerCase().includes(searchLower) ||
       password.tags.some(tag => tag.toLowerCase().includes(searchLower)) ||
       (password.notes && password.notes.toLowerCase().includes(searchLower))
     );
-  });
+  }, [passwords, debouncedSearchTerm]);
 
-  // Sort passwords: current domain first, then alphabetically
-  const sortedPasswords = filteredPasswords.sort((a, b) => {
-    // If we have a current domain, prioritize matching domains
-    if (currentDomain) {
-      const aMatchesDomain = a.website.toLowerCase().includes(currentDomain.toLowerCase());
-      const bMatchesDomain = b.website.toLowerCase().includes(currentDomain.toLowerCase());
-
-      // If one matches current domain and other doesn't, prioritize the match
-      if (aMatchesDomain && !bMatchesDomain) return -1;
-      if (!aMatchesDomain && bMatchesDomain) return 1;
-    }
-
-    // For same priority level, sort alphabetically by website
-    return a.website.toLowerCase().localeCompare(b.website.toLowerCase());
-  });
+  // Memoized sorted passwords
+  const sortedPasswords = useMemo(() => {
+    return [...filteredPasswords].sort((a, b) => {
+      if (currentDomain) {
+        const aMatchesDomain = a.website.toLowerCase().includes(currentDomain.toLowerCase());
+        const bMatchesDomain = b.website.toLowerCase().includes(currentDomain.toLowerCase());
+        if (aMatchesDomain && !bMatchesDomain) return -1;
+        if (!aMatchesDomain && bMatchesDomain) return 1;
+      }
+      return a.website.toLowerCase().localeCompare(b.website.toLowerCase());
+    });
+  }, [filteredPasswords, currentDomain]);
 
   useOneTimeEffect(() => {
     let isComponentMounted = true;
@@ -255,6 +261,64 @@ export function SidePanel() {
     };
   });
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        // Allow Escape to close modals even when in input
+        if (e.key === 'Escape' && activeModal) {
+          e.preventDefault();
+          closeModal();
+          setEditingPassword(null);
+        }
+        return;
+      }
+
+      // Ctrl/Cmd + key shortcuts
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case 'n': // New password
+            e.preventDefault();
+            if (!isVaultLocked) {
+              handleShowNewPasswordForm();
+            }
+            break;
+          case 'f': // Focus search
+            e.preventDefault();
+            if (!isVaultLocked) {
+              searchInputRef.current?.focus();
+            }
+            break;
+          case 'l': // Lock vault
+            e.preventDefault();
+            if (hasMasterPassword && !isVaultLocked) {
+              handleSecurityIconClick();
+            }
+            break;
+        }
+      } else {
+        // Single key shortcuts
+        switch (e.key) {
+          case 'Escape':
+            if (activeModal) {
+              e.preventDefault();
+              closeModal();
+              setEditingPassword(null);
+            }
+            break;
+          case '?': // Help
+            e.preventDefault();
+            setActiveModal('help');
+            break;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeModal, isVaultLocked, hasMasterPassword, closeModal]);
+
   return (
     <div className="h-full themed-bg-secondary flex flex-col">
       <header className="themed-accent-bg text-white p-4 shadow-md">
@@ -275,7 +339,7 @@ export function SidePanel() {
           </div>
           <div className="flex space-x-2">
             {passwords.length > 0 && <button
-              onClick={() => setShowHealthDashboard(!showHealthDashboard)}
+              onClick={() => toggleModal('health')}
               disabled={isVaultLocked}
               className={`p-2 rounded-lg transition-colors ${isVaultLocked
                 ? 'opacity-50 cursor-not-allowed'
@@ -286,7 +350,7 @@ export function SidePanel() {
               <span className="text-lg">📊</span>
             </button>}
             {passwords.length > 0 && <button
-              onClick={() => setShowBreachCheck(!showBreachCheck)}
+              onClick={() => toggleModal('breach')}
               disabled={isVaultLocked}
               className={`p-2 rounded-lg transition-colors ${isVaultLocked
                 ? 'opacity-50 cursor-not-allowed'
@@ -297,7 +361,7 @@ export function SidePanel() {
               <span className="text-lg">🛡️</span>
             </button>}
             <button
-              onClick={() => setShowFileManager(!showFileManager)}
+              onClick={() => toggleModal('files')}
               disabled={isVaultLocked}
               className={`p-2 rounded-lg transition-colors ${isVaultLocked
                 ? 'opacity-50 cursor-not-allowed'
@@ -309,7 +373,7 @@ export function SidePanel() {
             </button>
             {hasMasterPassword && !isVaultLocked && (
               <button
-                onClick={() => setShowMasterPasswordChange(true)}
+                onClick={() => setActiveModal('masterChange')}
                 className="p-2 rounded-lg hover:bg-white hover:bg-opacity-20 transition-colors"
                 title="Change Master Password"
               >
@@ -324,7 +388,7 @@ export function SidePanel() {
                   ? "Setup Master Password"
                   : isVaultLocked
                     ? "Unlock Vault"
-                    : "Lock Vault"
+                    : "Lock Vault (Ctrl+L)"
               }
             >
               <span className="text-lg">
@@ -332,37 +396,50 @@ export function SidePanel() {
               </span>
             </button>
             <button
-              onClick={() => setShowThemeSettings(!showThemeSettings)}
+              onClick={() => toggleModal('theme')}
               className="p-2 rounded-lg hover:bg-white hover:bg-opacity-20 transition-colors"
               disabled={isVaultLocked}
               title="Theme Settings"
             >
               <span className="text-lg">{isDark ? '🌙' : '☀️'}</span>
             </button>
+            <button
+              onClick={() => setActiveModal('help')}
+              className="p-2 rounded-lg hover:bg-white hover:bg-opacity-20 transition-colors"
+              title="Keyboard Shortcuts (?)"
+            >
+              <span className="text-lg">❓</span>
+            </button>
           </div>
         </div>
       </header>
 
-      {!isVaultLocked && showThemeSettings && (
+      {isModalOpen('help') && (
+        <div className="p-4 themed-bg-primary border-b themed-border">
+          <KeyboardShortcutsHelp onClose={closeModal} />
+        </div>
+      )}
+
+      {!isVaultLocked && isModalOpen('theme') && (
         <div className="p-4 themed-bg-primary border-b themed-border">
           <SuspenseWrapper fallback={<LoadingSpinner size="sm" />}>
-            <LazyThemeSettings onClose={() => setShowThemeSettings(false)} />
+            <LazyThemeSettings onClose={closeModal} />
           </SuspenseWrapper>
         </div>
       )}
 
-      {!isVaultLocked && showFileManager && (
+      {!isVaultLocked && isModalOpen('files') && (
         <div className="p-4 themed-bg-primary border-b themed-border">
           <SuspenseWrapper fallback={<LoadingSpinner size="sm" />}>
             <LazyFileManager
               onImportComplete={loadPasswords}
-              onClose={() => setShowFileManager(false)}
+              onClose={closeModal}
             />
           </SuspenseWrapper>
         </div>
       )}
 
-      {showHealthDashboard && (
+      {isModalOpen('health') && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="max-w-4xl w-full max-h-[90vh]">
             <SuspenseWrapper fallback={<LoadingSpinner />}>
@@ -370,53 +447,61 @@ export function SidePanel() {
                 passwords={passwords}
                 onPasswordEdit={(password: PasswordEntry) => {
                   setEditingPassword(password);
-                  setShowForm(true);
-                  setShowHealthDashboard(false);
+                  setActiveModal('form');
                 }}
-                onClose={() => setShowHealthDashboard(false)}
+                onClose={closeModal}
               />
             </SuspenseWrapper>
           </div>
         </div>
       )}
 
-      {showBreachCheck && (
+      {isModalOpen('breach') && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <SuspenseWrapper fallback={<LoadingSpinner />}>
             <LazyBreachCheckComponent
               passwords={passwords}
-              onClose={() => setShowBreachCheck(false)}
+              onClose={closeModal}
             />
           </SuspenseWrapper>
         </div>
       )}
 
       <div className="p-4 border-b themed-bg-primary themed-border">
-        <input
-          type="text"
-          placeholder={isVaultLocked ? "Unlock vault to search..." : "Search by website, username, tag, notes..."}
-          value={isVaultLocked ? "" : searchTerm}
-          onChange={(e) => !isVaultLocked && setSearchTerm(e.target.value)}
-          disabled={isVaultLocked}
-          className={`w-full px-3 py-2 themed-border rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent-500)] themed-bg-primary themed-text-primary ${isVaultLocked ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-        />
+        <div className="relative">
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder={isVaultLocked ? "Unlock vault to search..." : "Search by website, username, tag, notes... (Ctrl+F)"}
+            value={isVaultLocked ? "" : searchTerm}
+            onChange={(e) => !isVaultLocked && setSearchTerm(e.target.value)}
+            disabled={isVaultLocked}
+            className={`w-full px-3 py-2 pr-16 themed-border rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent-500)] themed-bg-primary themed-text-primary ${isVaultLocked ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+          />
+          {!isVaultLocked && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs themed-text-tertiary">
+              Ctrl+F
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="p-4 border-b themed-bg-primary themed-border">
         <button
-          onClick={() => showForm ? setShowForm(false) : handleShowNewPasswordForm()}
+          onClick={() => isModalOpen('form') ? closeModal() : handleShowNewPasswordForm()}
           disabled={isVaultLocked}
+          title={isVaultLocked ? 'Vault is locked' : 'Add new password (Ctrl+N)'}
           className={`w-full font-medium py-2 px-4 rounded-md transition-colors mb-2 ${isVaultLocked
             ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
             : 'themed-accent-bg hover:themed-accent-hover text-white'
             }`}
         >
-          {isVaultLocked ? 'Vault Locked' : showForm ? 'Cancel' : 'Add New Password'}
+          {isVaultLocked ? 'Vault Locked' : isModalOpen('form') ? 'Cancel (Esc)' : 'Add New Password (Ctrl+N)'}
         </button>
         
         <button
-          onClick={() => setShowRandomCodeGenerator(true)}
+          onClick={() => setActiveModal('codeGen')}
           disabled={isVaultLocked}
           className={`w-full font-medium py-2 px-4 rounded-md transition-colors ${isVaultLocked
             ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
@@ -435,7 +520,7 @@ export function SidePanel() {
               <div className="text-sm">Please unlock the vault to access your passwords</div>
             </div>
           </div>
-        ) : showForm ? (
+        ) : isModalOpen('form') ? (
           <div className="p-4 themed-bg-primary border-b themed-border">
             <PasswordForm
               password={editingPassword}
@@ -473,57 +558,50 @@ export function SidePanel() {
       </main>
 
       {/* Master Password Modals */}
-      {showMasterPasswordSetup && (
+      {isModalOpen('masterSetup') && (
         <SuspenseWrapper fallback={<LoadingSpinner />}>
           <LazyMasterPasswordSetup
             onComplete={async () => {
-              setShowMasterPasswordSetup(false);
+              closeModal();
               setIsVaultLocked(false);
               setHasMasterPassword(true);
               loadPasswords();
             }}
-            onClose={() => {
-              setShowMasterPasswordSetup(false);
-            }}
+            onClose={closeModal}
           />
         </SuspenseWrapper>
       )}
 
-      {showMasterPasswordUnlock && (
+      {isModalOpen('masterUnlock') && (
         <SuspenseWrapper fallback={<LoadingSpinner />}>
           <LazyMasterPasswordUnlock
             onUnlock={() => {
-              setShowMasterPasswordUnlock(false);
+              closeModal();
               setIsVaultLocked(false);
               loadPasswords();
             }}
-            onClose={() => {
-              setShowMasterPasswordUnlock(false);
-            }}
+            onClose={closeModal}
             onReset={handleVaultReset}
           />
         </SuspenseWrapper>
       )}
 
-      {showMasterPasswordChange && (
+      {isModalOpen('masterChange') && (
         <SuspenseWrapper fallback={<LoadingSpinner />}>
           <LazyMasterPasswordChange
             onComplete={() => {
-              setShowMasterPasswordChange(false);
-              // Reload passwords after changing master password
+              closeModal();
               loadPasswords();
             }}
-            onClose={() => {
-              setShowMasterPasswordChange(false);
-            }}
+            onClose={closeModal}
           />
         </SuspenseWrapper>
       )}
 
-      {showRandomCodeGenerator && (
+      {isModalOpen('codeGen') && (
         <SuspenseWrapper fallback={<LoadingSpinner />}>
           <LazyRandomCodeGenerator
-            onClose={() => setShowRandomCodeGenerator(false)}
+            onClose={closeModal}
           />
         </SuspenseWrapper>
       )}
