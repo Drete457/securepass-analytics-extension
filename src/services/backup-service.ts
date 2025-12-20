@@ -56,14 +56,15 @@ class BackupPasswordService implements BackupService {
       const passwords = await passwordService.getAll();
       const settings = await this.getSettings();
 
-      const backupData: BackupData = {
+      const backupData = {
         passwords: passwords.map(p => ({
           ...p,
           createdAt: p.createdAt.toISOString(),
           updatedAt: p.updatedAt.toISOString()
         })),
+        version: '1.0.0',
+        appName: 'SecurePass Analytics',
         exportDate: new Date().toISOString(),
-        version: '1.0',
         encrypted: settings.encryptionEnabled && !!encryptionPassword
       };
 
@@ -115,17 +116,20 @@ class BackupPasswordService implements BackupService {
       }
 
       // Convert back to PasswordEntry objects
-      const passwords: PasswordEntry[] = parsedData.passwords.map((entry: Record<string, unknown>) => ({
-        id: entry.id,
-        website: entry.website,
-        username: entry.username,
-        password: entry.password,
-        category: entry.category || 'personal',
-        tags: Array.isArray(entry.tags) ? entry.tags : [],
-        notes: entry.notes || undefined,
-        createdAt: new Date(entry.createdAt),
-        updatedAt: new Date(entry.updatedAt)
-      }));
+      const passwords: PasswordEntry[] = (parsedData.passwords as unknown[]).map((entry) => {
+        const e = entry as Record<string, unknown>;
+        return {
+          id: e.id as string,
+          website: e.website as string,
+          username: e.username as string,
+          password: e.password as string,
+          category: (e.category as PasswordEntry['category']) || 'personal',
+          tags: Array.isArray(e.tags) ? e.tags as string[] : [],
+          notes: (e.notes as string) || undefined,
+          createdAt: new Date(e.createdAt as string | number),
+          updatedAt: new Date(e.updatedAt as string | number)
+        };
+      });
 
       // Clear existing passwords and import new ones
       await passwordService.getAll();

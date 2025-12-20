@@ -41,15 +41,15 @@ class FilePasswordService implements PasswordDatabase {
       }
 
       const passwords: PasswordEntry[] = data.map((entry: Record<string, unknown>) => ({
-        id: entry.id || this.generateId(),
-        website: entry.website || '',
-        username: entry.username || '',
-        password: entry.password || '',
-        category: entry.category || 'personal',
-        tags: Array.isArray(entry.tags) ? entry.tags : [],
-        notes: entry.notes || undefined,
-        createdAt: entry.createdAt ? new Date(entry.createdAt) : new Date(),
-        updatedAt: entry.updatedAt ? new Date(entry.updatedAt) : new Date()
+        id: (entry.id as string) || this.generateId(),
+        website: (entry.website as string) || '',
+        username: (entry.username as string) || '',
+        password: (entry.password as string) || '',
+        category: (entry.category as PasswordEntry['category']) || 'personal',
+        tags: Array.isArray(entry.tags) ? entry.tags as string[] : [],
+        notes: (entry.notes as string) || undefined,
+        createdAt: entry.createdAt ? new Date(entry.createdAt as string | number) : new Date(),
+        updatedAt: entry.updatedAt ? new Date(entry.updatedAt as string | number) : new Date()
       }));
 
       await this.saveToStorage(passwords);
@@ -75,9 +75,9 @@ class FilePasswordService implements PasswordDatabase {
       
       return passwords.map((entry: Record<string, unknown>) => ({
         ...entry,
-        createdAt: new Date(entry.createdAt),
-        updatedAt: new Date(entry.updatedAt)
-      }));
+        createdAt: new Date(entry.createdAt as string | number),
+        updatedAt: new Date(entry.updatedAt as string | number)
+      })) as PasswordEntry[];
     } catch (error) {
       console.error('Failed to load from storage:', error);
       return [];

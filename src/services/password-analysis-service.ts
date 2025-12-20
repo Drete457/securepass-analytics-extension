@@ -150,7 +150,7 @@ class PasswordAnalysisService {
             validUpdatedAt = updatedAt;
           } else {
             // Try to parse as string if it's not a valid Date object
-            validUpdatedAt = new Date(updatedAt as string | number);
+            validUpdatedAt = new Date(updatedAt as unknown as string | number);
             if (isNaN(validUpdatedAt.getTime())) {
               console.warn('PasswordAnalysisService: Invalid updatedAt date for password, using current date:', updatedAt);
               validUpdatedAt = new Date(); // Fallback to current date
@@ -306,7 +306,7 @@ class PasswordAnalysisService {
           createdAt = password.createdAt;
         } else {
           // Try to parse as string if it's not a valid Date object
-          createdAt = new Date(password.createdAt as string | number);
+          createdAt = new Date(password.createdAt as unknown as string | number);
           if (isNaN(createdAt.getTime())) {
             console.warn('PasswordAnalysisService: Invalid date for password, using current date:', password.createdAt);
             createdAt = new Date(); // Fallback to current date

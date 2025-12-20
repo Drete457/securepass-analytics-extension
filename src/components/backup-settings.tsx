@@ -258,13 +258,13 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
                   <div className="flex justify-between">
                     <span className="text-green-600 dark:text-green-400">Extension ID:</span>
                     <span className="text-green-800 dark:text-green-200 font-mono">
-                      {securityStatus.extensionId.substring(0, 16)}...
+                      {String(securityStatus.extensionId).substring(0, 16)}...
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-green-600 dark:text-green-400">Isolation Level:</span>
                     <span className="text-green-800 dark:text-green-200">
-                      {securityStatus.isolationLevel}
+                      {String(securityStatus.isolationLevel)}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -273,11 +273,11 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
                       {securityStatus.isSecure ? '✅ Secure' : '⚠️ Issues detected'}
                     </span>
                   </div>
-                  {securityStatus.warnings && securityStatus.warnings.length > 0 && (
+                  {Array.isArray(securityStatus.warnings) && securityStatus.warnings.length > 0 && (
                     <div className="mt-2">
                       <span className="text-yellow-600 dark:text-yellow-400 text-xs">Warnings:</span>
                       <ul className="mt-1 space-y-1">
-                        {securityStatus.warnings.map((warning: string, index: number) => (
+                        {(securityStatus.warnings as string[]).map((warning: string, index: number) => (
                           <li key={index} className="text-yellow-700 dark:text-yellow-300 text-xs">
                             • {warning}
                           </li>
