@@ -16,6 +16,7 @@ class BackupPasswordService implements BackupService {
   private readonly backupsKey = 'auto_backups';
   private backupTimer: number | null = null;
   private isAutoBackupInitialized = false;
+  private sessionAutoBackupPassword: string | null = null;
 
   private defaultSettings: BackupSettings = {
     autoBackupEnabled: false,
@@ -35,12 +36,28 @@ class BackupPasswordService implements BackupService {
     }
   }
 
+  /**
+   * Sets the in-memory password used for automatic encrypted backups.
+   * This value is not persisted; users must re-enter it per session.
+   */
+  setAutoBackupPassword(password: string | null): void {
+    this.sessionAutoBackupPassword = password?.trim() || null;
+  }
+
+  hasAutoBackupPassword(): boolean {
+    return !!this.sessionAutoBackupPassword;
+  }
+
   async updateSettings(settings: Partial<BackupSettings>): Promise<void> {
     try {
       const currentSettings = await this.getSettings();
       const newSettings = { ...currentSettings, ...settings };
       await chrome.storage.local.set({ [this.settingsKey]: newSettings });
 
+      // Clear session password if encryption turned off
+      if (settings.encryptionEnabled === false) {
+        this.sessionAutoBackupPassword = null;
+      }
       // Restart auto backup if settings changed
       if (settings.autoBackupEnabled !== undefined || settings.backupInterval !== undefined) {
         this.startAutoBackup();
@@ -71,7 +88,10 @@ class BackupPasswordService implements BackupService {
       let dataStr = JSON.stringify(backupData, null, 2);
 
       // Encrypt if enabled and password provided
-      if (settings.encryptionEnabled && encryptionPassword) {
+      if (settings.encryptionEnabled) {
+        if (!encryptionPassword) {
+          throw new Error('Encryption is enabled for backups. Please provide an encryption password.');
+        }
         dataStr = await encryptionService.encrypt(dataStr, encryptionPassword);
       }
 
@@ -131,29 +151,8 @@ class BackupPasswordService implements BackupService {
         };
       });
 
-      // Clear existing passwords and import new ones
-      await passwordService.getAll();
-
-      // Clear all current passwords first
-      await passwordService.clearAll();
-
-      for (let i = 0; i < passwords.length; i++) {
-        const password = passwords[i];
-
-        try {
-          await passwordService.add({
-            website: password.website,
-            username: password.username,
-            password: password.password,
-            category: password.category,
-            tags: password.tags,
-            notes: password.notes
-          });
-        } catch (error) {
-          console.error(`Failed to import password ${i + 1}:`, error);
-          throw new Error(`Failed to import password for ${password.website}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-      }
+      // Replace all stored passwords in one operation to preserve ids and timestamps
+      await passwordService.replaceAll(passwords);
 
     } catch (error) {
       console.error('Failed to import data:', error);
@@ -390,8 +389,17 @@ class BackupPasswordService implements BackupService {
     // Create auto backup
     const performBackup = async () => {
       try {
-        const backupData = await this.exportData();
-        await this.saveAutoBackup(backupData);
+        if (settings.encryptionEnabled) {
+          if (!this.sessionAutoBackupPassword) {
+            console.warn('Auto backup skipped: encryption is enabled but no password was provided.');
+            return;
+          }
+          const backupData = await this.exportData(this.sessionAutoBackupPassword);
+          await this.saveAutoBackup(backupData);
+        } else {
+          const backupData = await this.exportData();
+          await this.saveAutoBackup(backupData);
+        }
 
         // Update last backup date
         await this.updateSettings({ lastBackupDate: new Date().toISOString() });

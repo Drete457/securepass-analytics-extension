@@ -10,14 +10,12 @@ export function PasswordBreachIndicator({ password, compact = false }: PasswordB
   const [breachInfo, setBreachInfo] = useState<BreachCheckResult | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [hasChecked, setHasChecked] = useState(false);
-  const [lastPassword, setLastPassword] = useState(password);
 
-  // Reset state when password changes
-  if (password !== lastPassword) {
+  // Reset state when password input changes
+  useEffect(() => {
     setBreachInfo(null);
     setHasChecked(false);
-    setLastPassword(password);
-  }
+  }, [password]);
 
   // Check cache for this password
   useEffect(() => {

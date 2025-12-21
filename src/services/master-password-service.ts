@@ -261,6 +261,8 @@ class SecurityServiceImpl implements SecurityService {
 
       // Temporarily set legacy key to decrypt existing passwords
       this.state.encryptionKey = legacyEncryptionKey;
+      // Unlock during migration so decryptSensitiveData actually decrypts
+      this.state.isLocked = false;
 
       // Get all passwords decrypted with legacy key
       const passwordService = (await import('./password-service')).passwordService;

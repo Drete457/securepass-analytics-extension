@@ -14,6 +14,7 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
   const [showEncryptionPassword, setShowEncryptionPassword] = useState(false);
   const [showDecryptionPassword, setShowDecryptionPassword] = useState(false);
   const [encryptionPassword, setEncryptionPassword] = useState('');
+  const [autoBackupPassword, setAutoBackupPassword] = useState('');
   const [decryptionPassword, setDecryptionPassword] = useState('');
   const [autoBackups, setAutoBackups] = useState<Array<{ date: string; data: string }>>([]);
   const [showSecurityInfo, setShowSecurityInfo] = useState(false);
@@ -57,6 +58,12 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
       const updatedSettings = { ...settings, ...newSettings };
       await backupPasswordService.updateSettings(newSettings);
       setSettings(updatedSettings);
+
+      // Clear session password if user disables encryption
+      if (newSettings.encryptionEnabled === false) {
+        setAutoBackupPassword('');
+        backupPasswordService.setAutoBackupPassword(null);
+      }
     } catch (error) {
       console.error('Failed to update settings:', error);
       alert('Failed to update backup settings');
@@ -66,13 +73,17 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
   };
 
   const handleExportWithEncryption = async () => {
-    if (!settings?.encryptionEnabled || !encryptionPassword) {
-      await backupPasswordService.exportToFile();
-      return;
-    }
-
     try {
-      await backupPasswordService.exportToFile(encryptionPassword);
+      if (settings?.encryptionEnabled) {
+        if (!encryptionPassword) {
+          alert('Please set an encryption password to export encrypted backups.');
+          return;
+        }
+        await backupPasswordService.exportToFile(encryptionPassword);
+      } else {
+        await backupPasswordService.exportToFile();
+      }
+
       setEncryptionPassword('');
       setShowEncryptionPassword(false);
     } catch (error) {
@@ -109,15 +120,15 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
     if (!confirmed) return;
 
     try {
-      if (settings?.encryptionEnabled && encryptionPassword) {
-        await backupPasswordService.restoreAutoBackup(index, encryptionPassword);
+      if (autoBackupPassword) {
+        await backupPasswordService.restoreAutoBackup(index, autoBackupPassword);
       } else {
         await backupPasswordService.restoreAutoBackup(index);
       }
       
       alert('Backup restored successfully!');
-      setEncryptionPassword('');
-      setShowEncryptionPassword(false);
+      setAutoBackupPassword('');
+      backupPasswordService.setAutoBackupPassword(null);
     } catch (error) {
       console.error('Restore failed:', error);
       alert('Failed to restore backup - check password');
@@ -347,6 +358,28 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
                     <span>50 backups</span>
                   </div>
                 </div>
+
+                {settings.encryptionEnabled && (
+                  <div className="p-3 rounded-lg themed-bg-secondary themed-border space-y-2">
+                    <label className="block text-sm font-medium themed-text-primary">
+                      Auto-backup encryption password (session only)
+                    </label>
+                    <input
+                      type="password"
+                      value={autoBackupPassword}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setAutoBackupPassword(value);
+                        backupPasswordService.setAutoBackupPassword(value);
+                      }}
+                      placeholder="Enter password to encrypt auto backups"
+                      className="w-full p-2 text-sm themed-border rounded-lg themed-bg-primary themed-text-primary"
+                    />
+                    <p className="text-xs themed-text-secondary">
+                      Not stored persistently. If omitted, auto backups are skipped while encryption is on.
+                    </p>
+                  </div>
+                )}
               </>
             )}
 
@@ -377,6 +410,9 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
             <div className="mt-3 p-3 rounded-lg themed-bg-secondary themed-border">
               <p className="text-sm themed-text-secondary mb-2">
                 ⚠️ Remember your encryption password - lost passwords cannot be recovered!
+              </p>
+              <p className="text-xs themed-text-secondary">
+                Auto-backup passwords are kept only for this session; re-enter after reopening the extension.
               </p>
             </div>
           )}

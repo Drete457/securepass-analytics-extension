@@ -19,6 +19,7 @@ import {
 } from './lazy-components';
 import { useTheme } from '../contexts/theme-context';
 import { KeyboardShortcutsHelp } from './keyboard-shortcuts-help';
+import { Toast, useToast } from './toast';
 
 // Unified modal state type
 type ModalType = 
@@ -36,6 +37,7 @@ type ModalType =
 
 export function SidePanel() {
   const { isDark } = useTheme();
+  const { toast, showToast, dismissToast } = useToast();
   const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
@@ -228,6 +230,25 @@ export function SidePanel() {
         // Initialize auto backup after component is loaded
         const { backupPasswordService } = await import('../services/backup-service');
         backupPasswordService.autoBackup();
+
+        // Warn once per session if auto backup is paused due to missing password
+        try {
+          const settings = await backupPasswordService.getSettings();
+          const warnedKey = 'auto_backup_password_warned_session';
+          const alreadyWarned = sessionStorage.getItem(warnedKey);
+
+          if (
+            settings.autoBackupEnabled &&
+            settings.encryptionEnabled &&
+            !backupPasswordService.hasAutoBackupPassword() &&
+            !alreadyWarned
+          ) {
+            showToast('Auto backups are paused until you set the session password in Backup Settings.', 'info');
+            sessionStorage.setItem(warnedKey, '1');
+          }
+        } catch (error) {
+          console.error('Auto backup warning check failed:', error);
+        }
       }
     };
 
@@ -605,6 +626,8 @@ export function SidePanel() {
           />
         </SuspenseWrapper>
       )}
+
+      <Toast message={toast} onDismiss={dismissToast} />
     </div>
   );
 }

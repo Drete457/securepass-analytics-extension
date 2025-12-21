@@ -195,8 +195,18 @@ class ChromeStoragePasswordService implements PasswordDatabase {
       throw new Error('Entry not found');
     }
 
+    // Do not allow updates while the vault is locked to avoid re-encrypting encrypted data
+    const securityService = await getSecurityService();
+    const hasMasterPassword = await securityService.hasMasterPassword();
+    if (hasMasterPassword && await securityService.isLocked()) {
+      throw new Error('Vault is locked - unlock to update entries');
+    }
+
+    // Decrypt the stored entry before merging to prevent double encryption
+    const decryptedEntry = await this.decryptSensitiveData(passwords[index]);
+
     const updatedEntry: PasswordEntry = {
-      ...passwords[index],
+      ...decryptedEntry,
       ...entry,
       id,
       updatedAt: new Date()
@@ -220,6 +230,30 @@ class ChromeStoragePasswordService implements PasswordDatabase {
    */
   async clearAll(): Promise<void> {
     await chrome.storage.local.remove(this.storageKey);
+  }
+
+  /**
+   * Replace all stored passwords with the provided list while preserving ids and timestamps.
+   */
+  async replaceAll(entries: PasswordEntry[]): Promise<void> {
+    const securityService = await getSecurityService();
+    const hasMasterPassword = await securityService.hasMasterPassword();
+    if (hasMasterPassword && await securityService.isLocked()) {
+      throw new Error('Vault is locked - unlock to restore passwords');
+    }
+
+    // Normalize dates and ensure required fields
+    const normalized = entries.map(entry => ({
+      ...entry,
+      createdAt: entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt),
+      updatedAt: entry.updatedAt instanceof Date ? entry.updatedAt : new Date(entry.updatedAt),
+      category: entry.category || 'personal',
+      tags: Array.isArray(entry.tags) ? entry.tags : [],
+      notes: entry.notes || undefined
+    }));
+
+    const encrypted = await Promise.all(normalized.map(e => this.encryptSensitiveData(e)));
+    await this.saveToStorage(encrypted);
   }
 
   /**
