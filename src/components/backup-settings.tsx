@@ -15,6 +15,7 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
   const [showDecryptionPassword, setShowDecryptionPassword] = useState(false);
   const [encryptionPassword, setEncryptionPassword] = useState('');
   const [autoBackupPassword, setAutoBackupPassword] = useState('');
+  const [autoBackupPasswordError, setAutoBackupPasswordError] = useState('');
   const [decryptionPassword, setDecryptionPassword] = useState('');
   const [autoBackups, setAutoBackups] = useState<Array<{ date: string; data: string }>>([]);
   const [showSecurityInfo, setShowSecurityInfo] = useState(false);
@@ -318,6 +319,12 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
               <span className="themed-text-primary">Enable automatic backups</span>
             </label>
 
+            {settings.autoBackupEnabled && settings.encryptionEnabled && !autoBackupPassword && (
+              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800 border border-yellow-200">
+                Auto backups paused: set session password
+              </div>
+            )}
+
             {settings.autoBackupEnabled && (
               <>
                 <div>
@@ -370,14 +377,36 @@ export function BackupSettings({ onClose }: BackupSettingsProps) {
                       onChange={(e) => {
                         const value = e.target.value;
                         setAutoBackupPassword(value);
-                        backupPasswordService.setAutoBackupPassword(value);
+                        if (value && value.length < 8) {
+                          setAutoBackupPasswordError('Use at least 8 characters.');
+                          backupPasswordService.setAutoBackupPassword(null);
+                        } else {
+                          setAutoBackupPasswordError('');
+                          backupPasswordService.setAutoBackupPassword(value || null);
+                        }
                       }}
                       placeholder="Enter password to encrypt auto backups"
                       className="w-full p-2 text-sm themed-border rounded-lg themed-bg-primary themed-text-primary"
                     />
-                    <p className="text-xs themed-text-secondary">
-                      Not stored persistently. If omitted, auto backups are skipped while encryption is on.
-                    </p>
+                    {autoBackupPasswordError && (
+                      <p className="text-xs text-red-500">{autoBackupPasswordError}</p>
+                    )}
+                    <div className="flex items-center gap-2 text-xs themed-text-secondary">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAutoBackupPassword('');
+                          setAutoBackupPasswordError('');
+                          backupPasswordService.setAutoBackupPassword(null);
+                        }}
+                        className="px-2 py-1 rounded themed-border themed-text-primary hover:themed-bg-secondary"
+                      >
+                        Clear session password
+                      </button>
+                      <span>
+                        Not stored persistently. If omitted, auto backups are skipped while encryption is on.
+                      </span>
+                    </div>
                   </div>
                 )}
               </>

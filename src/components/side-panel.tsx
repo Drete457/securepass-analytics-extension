@@ -49,6 +49,7 @@ export function SidePanel() {
   const [hasMasterPassword, setHasMasterPassword] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const storageListenerRef = useRef<(() => void) | null>(null);
 
   // Helper to check if a modal is active
   const isModalOpen = useCallback((modal: ModalType) => activeModal === modal, [activeModal]);
@@ -249,6 +250,32 @@ export function SidePanel() {
         } catch (error) {
           console.error('Auto backup warning check failed:', error);
         }
+
+        // Listen for auto-backup status updates via session storage
+        if (chrome?.storage?.onChanged) {
+          const handler: typeof chrome.storage.onChanged.addListener extends (cb: infer T) => any ? T : any = (changes, area) => {
+            if (area !== 'session') return;
+            if (changes.auto_backup_status?.newValue) {
+              const { message, type } = changes.auto_backup_status.newValue as { message: string; type: 'info' | 'error' };
+              showToast(message, type === 'error' ? 'error' : 'info');
+            }
+          };
+          chrome.storage.onChanged.addListener(handler);
+          storageListenerRef.current = () => chrome.storage.onChanged.removeListener(handler);
+
+          // Check existing status once
+          try {
+            if (chrome.storage.session) {
+              const existing = await chrome.storage.session.get('auto_backup_status');
+              if (existing.auto_backup_status?.message) {
+                const { message, type } = existing.auto_backup_status;
+                showToast(message, type === 'error' ? 'error' : 'info');
+              }
+            }
+          } catch (error) {
+            console.error('Failed to read auto backup status:', error);
+          }
+        }
       }
     };
 
@@ -279,6 +306,9 @@ export function SidePanel() {
       isComponentMounted = false;
       chrome.tabs.onActivated.removeListener(handleTabChange);
       chrome.tabs.onUpdated.removeListener(handleTabUpdate);
+      if (storageListenerRef.current) {
+        storageListenerRef.current();
+      }
     };
   });
 

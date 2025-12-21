@@ -55,7 +55,7 @@ class BreachCheckService {
       // k-anonymity: use only the first 5 characters
       const hashPrefix = passwordHash.substring(0, 5);
       const hashSuffix = passwordHash.substring(5);
-
+      
       // Make request to the API
       const response = await fetch(`${this.API_BASE_URL}${hashPrefix}`, {
         method: 'GET',

@@ -17,6 +17,7 @@ class BackupPasswordService implements BackupService {
   private backupTimer: number | null = null;
   private isAutoBackupInitialized = false;
   private sessionAutoBackupPassword: string | null = null;
+  private readonly statusKey = 'auto_backup_status';
 
   private defaultSettings: BackupSettings = {
     autoBackupEnabled: false,
@@ -48,6 +49,15 @@ class BackupPasswordService implements BackupService {
     return !!this.sessionAutoBackupPassword;
   }
 
+  private async publishStatus(message: string, type: 'info' | 'error'): Promise<void> {
+    try {
+      if (!chrome?.storage?.session) return;
+      await chrome.storage.session.set({ [this.statusKey]: { message, type, ts: Date.now() } });
+    } catch (error) {
+      console.error('Auto backup status publish failed:', error);
+    }
+  }
+
   async updateSettings(settings: Partial<BackupSettings>): Promise<void> {
     try {
       const currentSettings = await this.getSettings();
@@ -59,7 +69,11 @@ class BackupPasswordService implements BackupService {
         this.sessionAutoBackupPassword = null;
       }
       // Restart auto backup if settings changed
-      if (settings.autoBackupEnabled !== undefined || settings.backupInterval !== undefined) {
+      if (
+        settings.autoBackupEnabled !== undefined ||
+        settings.backupInterval !== undefined ||
+        settings.encryptionEnabled !== undefined
+      ) {
         this.startAutoBackup();
       }
     } catch (error) {
@@ -380,31 +394,50 @@ class BackupPasswordService implements BackupService {
       this.backupTimer = null;
     }
 
-    const settings = await this.getSettings();
+    const initialSettings = await this.getSettings();
 
-    if (!settings.autoBackupEnabled) {
+    if (!initialSettings.autoBackupEnabled) {
       return;
     }
 
     // Create auto backup
     const performBackup = async () => {
       try {
-        if (settings.encryptionEnabled) {
-          if (!this.sessionAutoBackupPassword) {
-            console.warn('Auto backup skipped: encryption is enabled but no password was provided.');
+        const settings = await this.getSettings();
+
+        if (!settings.autoBackupEnabled) {
+          return;
+        }
+
+        if (settings.encryptionEnabled && !this.sessionAutoBackupPassword) {
+          console.warn('Auto backup skipped: encryption is enabled but no password was provided.');
+          await this.publishStatus('Auto backup paused: set the session password in Backup Settings.', 'info');
+          return;
+        }
+
+        // Skip if vault is locked and master password exists
+        try {
+          const { securityService } = await import('./master-password-service');
+          const hasMP = await securityService.hasMasterPassword();
+          if (hasMP && await securityService.isLocked()) {
+            await this.publishStatus('Auto backup skipped: vault is locked.', 'info');
             return;
           }
-          const backupData = await this.exportData(this.sessionAutoBackupPassword);
-          await this.saveAutoBackup(backupData);
-        } else {
-          const backupData = await this.exportData();
-          await this.saveAutoBackup(backupData);
+        } catch (error) {
+          console.error('Auto backup lock check failed:', error);
         }
+
+        const backupData = settings.encryptionEnabled && this.sessionAutoBackupPassword
+          ? await this.exportData(this.sessionAutoBackupPassword)
+          : await this.exportData();
+
+        await this.saveAutoBackup(backupData);
 
         // Update last backup date
         await this.updateSettings({ lastBackupDate: new Date().toISOString() });
       } catch (error) {
         console.error('Auto backup failed:', error);
+        await this.publishStatus('Auto backup failed. See console for details.', 'error');
       }
     };
 
