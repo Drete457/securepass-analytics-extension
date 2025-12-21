@@ -253,7 +253,10 @@ export function SidePanel() {
 
         // Listen for auto-backup status updates via session storage
         if (chrome?.storage?.onChanged) {
-          const handler: typeof chrome.storage.onChanged.addListener extends (cb: infer T) => any ? T : any = (changes, area) => {
+          const handler = (
+            changes: Record<string, chrome.storage.StorageChange>,
+            area: string
+          ) => {
             if (area !== 'session') return;
             if (changes.auto_backup_status?.newValue) {
               const { message, type } = changes.auto_backup_status.newValue as { message: string; type: 'info' | 'error' };
@@ -275,6 +278,21 @@ export function SidePanel() {
           } catch (error) {
             console.error('Failed to read auto backup status:', error);
           }
+        }
+
+        // Fallback: listen to background tab-activity pings to refresh current domain
+        if (chrome?.runtime?.onMessage) {
+          const messageHandler = (message: { type?: string }) => {
+            if (message?.type === 'tab-activity') {
+              getCurrentDomain();
+            }
+          };
+          chrome.runtime.onMessage.addListener(messageHandler);
+          const prevStorageCleanup = storageListenerRef.current;
+          storageListenerRef.current = () => {
+            chrome.runtime.onMessage.removeListener(messageHandler);
+            if (prevStorageCleanup) prevStorageCleanup();
+          };
         }
       }
     };

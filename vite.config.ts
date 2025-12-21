@@ -10,7 +10,8 @@ const manifest = defineManifest({
   permissions: [
     "sidePanel",
     "storage",
-    "activeTab"
+    "activeTab",
+    "tabs"
   ],
   host_permissions: [
     "<all_urls>",

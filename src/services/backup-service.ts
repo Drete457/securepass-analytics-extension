@@ -447,7 +447,7 @@ class BackupPasswordService implements BackupService {
     // Set up recurring backup
     this.backupTimer = window.setInterval(
       performBackup,
-      settings.backupInterval * 60 * 1000
+      initialSettings.backupInterval * 60 * 1000
     );
   }
 

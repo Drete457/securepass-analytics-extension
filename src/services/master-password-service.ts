@@ -588,7 +588,7 @@ class SecurityServiceImpl implements SecurityService {
 
       // Check extension permissions
       const permissions = await chrome.permissions.getAll();
-      const allowedPermissions = ['storage', 'sidePanel', 'activeTab'];
+      const allowedPermissions = ['storage', 'sidePanel', 'activeTab', 'tabs'];
       
       for (const permission of permissions.permissions || []) {
         if (!allowedPermissions.includes(permission)) {
